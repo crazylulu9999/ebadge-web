@@ -45,6 +45,8 @@ const CMD_FINALIZE = 0x1c
 export type LogLevel = 'info' | 'tx' | 'rx' | 'warn' | 'err'
 export type Logger = (level: LogLevel, msg: string) => void
 export type Progress = (sent: number, total: number) => void
+/** Still image (.jpg) or animation (.avi). Only the completion ext differs. */
+export type UploadMode = 'image' | 'animation'
 
 // ── Frame helpers ───────────────────────────────────────────
 
@@ -120,6 +122,7 @@ export class E87Client {
   private autoRespond20 = false
   private fileCompleteHandled = false
   private authenticated = false
+  private uploadMode: UploadMode = 'image'
 
   constructor(private log: Logger = () => {}) {}
 
@@ -362,8 +365,27 @@ export class E87Client {
 
   // ── upload ───────────────────────────────────────────────
 
-  /** Upload a complete JPEG file (already encoded, 368×368) to the badge. */
+  /** Upload a still JPEG (already encoded, 368×368). Thin wrapper over uploadFile. */
   async uploadJpeg(jpeg: Uint8Array, onProgress: Progress = () => {}): Promise<void> {
+    return this.uploadFile(jpeg, { mode: 'image' }, onProgress)
+  }
+
+  /** Upload an MJPG-AVI animation (built by buildMjpgAvi). */
+  async uploadAnimation(avi: Uint8Array, onProgress: Progress = () => {}): Promise<void> {
+    return this.uploadFile(avi, { mode: 'animation' }, onProgress)
+  }
+
+  /**
+   * Upload a complete file to the badge. Still JPEG and MJPG-AVI animation use
+   * the EXACT same transfer path; the only difference is the completion
+   * path-response extension (.jpg vs .avi), driven by this.uploadMode.
+   */
+  async uploadFile(
+    bytes: Uint8Array,
+    opts: { mode?: UploadMode } = {},
+    onProgress: Progress = () => {},
+  ): Promise<void> {
+    this.uploadMode = opts.mode ?? 'image'
     if (!this.connected) throw new Error('not connected')
     this.aborted = false
     this.ae02Buf = []
@@ -382,9 +404,9 @@ export class E87Client {
     await this.controlHandshake()
 
     // Phase 8 — file metadata
-    const fileCrc = crc16xmodem(jpeg)
+    const fileCrc = crc16xmodem(bytes)
     const name = this.tempName()
-    await this.sendFrame(FLAG_REQ, CMD_FILE_META, this.buildMetaBody(jpeg.length, fileCrc, name))
+    await this.sendFrame(FLAG_REQ, CMD_FILE_META, this.buildMetaBody(bytes.length, fileCrc, name))
     this.seq++
     const metaAck = await this.waitFrame(CMD_FILE_META, FLAG_RESP, 5000)
 
@@ -393,7 +415,7 @@ export class E87Client {
       const cs = (metaAck.body[2] << 8) | metaAck.body[3]
       if (cs > 0 && cs <= 4096) chunkSize = cs
     }
-    this.log('info', `metadata acked — size=${jpeg.length}B crc=0x${fileCrc.toString(16)} chunk=${chunkSize} name=${name}`)
+    this.log('info', `metadata acked — size=${bytes.length}B crc=0x${fileCrc.toString(16)} chunk=${chunkSize} name=${name}`)
 
     // Phase 9 — offset-driven windowed transfer.
     // The badge dictates the next byte offset + window size in each 0x1d ack.
@@ -404,7 +426,7 @@ export class E87Client {
     const reportProgress = (reached: number) => {
       if (reached > best) {
         best = reached
-        onProgress(best, jpeg.length)
+        onProgress(best, bytes.length)
       }
     }
 
@@ -418,7 +440,7 @@ export class E87Client {
         const b = currentAck.body
         const winSize = (b[2] << 8) | b[3]
         const nextOffset = ((b[4] << 24) | (b[5] << 16) | (b[6] << 8) | b[7]) >>> 0
-        await this.sendChunksAt(jpeg, nextOffset, winSize, chunkSize, reportProgress)
+        await this.sendChunksAt(bytes, nextOffset, winSize, chunkSize, reportProgress)
         if (nextOffset === 0) this.log('info', 'commit chunk sent')
       }
 
@@ -446,16 +468,16 @@ export class E87Client {
     }
 
     this.autoRespond20 = false
-    onProgress(jpeg.length, jpeg.length)
+    onProgress(bytes.length, bytes.length)
     this.log('info', '✅ upload complete')
 
-    // Connection is kept open so multiple images can be sent in a row. The
+    // Connection is kept open so multiple files can be sent in a row. The
     // badge stays on its Bluetooth screen until you disconnect manually; the
-    // uploaded image is applied once the link drops.
+    // uploaded content is applied once the link drops.
   }
 
   private async sendChunksAt(
-    jpeg: Uint8Array,
+    data: Uint8Array,
     offset: number,
     winSize: number,
     chunkSize: number,
@@ -467,10 +489,10 @@ export class E87Client {
     while (bytesSent < winSize) {
       if (this.aborted) throw new Error('aborted')
       const chunkOffset = offset + bytesSent
-      if (chunkOffset >= jpeg.length) break
-      const remaining = Math.min(winSize - bytesSent, jpeg.length - chunkOffset)
+      if (chunkOffset >= data.length) break
+      const remaining = Math.min(winSize - bytesSent, data.length - chunkOffset)
       const chunkLen = Math.min(chunkSize, remaining)
-      const payload = jpeg.subarray(chunkOffset, chunkOffset + chunkLen)
+      const payload = data.subarray(chunkOffset, chunkOffset + chunkLen)
 
       const crc = crc16xmodem(payload)
       const body = new Uint8Array(5 + payload.length)
@@ -512,7 +534,8 @@ export class E87Client {
     const d = new Date()
     const z = (n: number, w = 2) => n.toString().padStart(w, '0')
     const dateStr = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`
-    const path = `啜${dateStr}.jpg`
+    const ext = this.uploadMode === 'animation' ? '.avi' : '.jpg'
+    const path = `啜${dateStr}${ext}`
     const u16 = new Uint8Array(path.length * 2 + 2) // trailing UTF-16 null
     for (let i = 0; i < path.length; i++) {
       const c = path.charCodeAt(i)
