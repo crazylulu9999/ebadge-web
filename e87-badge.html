@@ -1,0 +1,1741 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>E87 Badge — Web Bluetooth Uploader</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0e1116;
+        --panel: #161b22;
+        --border: #2a313c;
+        --fg: #d7dde5;
+        --muted: #8b949e;
+        --accent: #3fb950;
+        --accent-dim: #238636;
+        --warn: #d29922;
+        --err: #f85149;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 80px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+      .sub code { font-family: var(--mono); color: var(--fg); }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+        margin-bottom: 16px;
+      }
+      .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+      button {
+        font: inherit;
+        background: #21262d;
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: #3d444d; }
+      button:disabled { opacity: .45; cursor: not-allowed; }
+      button.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+      button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .status { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #555; }
+      .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+      .previewArea { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+      #preview {
+        width: 184px; height: 184px; border-radius: 50%;
+        border: 1px solid var(--border); object-fit: cover; background: #0b0e12;
+      }
+      .meta { font-size: 13px; color: var(--muted); }
+      .meta b { color: var(--fg); font-weight: 600; }
+      input[type=file] { font: inherit; color: var(--muted); }
+      progress { width: 100%; height: 10px; }
+      .logHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+      .logHeader button { padding: 4px 10px; font-size: 12px; }
+      #log {
+        font-family: var(--mono); font-size: 12px;
+        background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;
+        padding: 12px; height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+      }
+      .log-info { color: var(--muted); }
+      .log-tx { color: #58a6ff; }
+      .log-rx { color: var(--accent); }
+      .log-warn { color: var(--warn); }
+      .log-err { color: var(--err); }
+      .banner {
+        background: #2d2410; border: 1px solid #5c4a12; color: var(--warn);
+        border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+      }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>E87 Badge — Web Bluetooth Uploader</h1>
+      <p class="sub">
+        JieLi AC697 기반 E87 / L8 배지에 이미지 전송 · <code>ZRun</code> 호환 프로토콜.
+        Chrome / Edge (데스크탑 · 안드로이드)에서 동작. iOS Safari는 Web Bluetooth 미지원.
+      </p>
+
+      <div id="unsupported" class="banner hidden">
+        ⚠️ 이 브라우저는 Web Bluetooth를 지원하지 않습니다. 데스크탑 Chrome/Edge 또는 안드로이드 Chrome을 사용하세요.
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <button id="connectBtn" class="primary">배지 연결</button>
+          <button id="disconnectBtn" disabled>연결 해제</button>
+          <div class="status"><span id="dot" class="dot"></span><span id="statusText">미연결</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="label">이미지</div>
+        <div class="previewArea">
+          <img id="preview" alt="preview" />
+          <div>
+            <input type="file" id="fileInput" accept="image/*" />
+            <p class="meta" id="imgMeta">368×368 정사각형으로 자동 크롭 후 JPEG 인코딩됩니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row" style="margin-bottom: 12px;">
+          <button id="uploadBtn" class="primary" disabled>배지로 전송</button>
+          <button id="stopBtn" disabled>중지</button>
+        </div>
+        <progress id="prog" value="0" max="100"></progress>
+      </div>
+
+      <div class="panel">
+        <div class="logHeader">
+          <span class="label" style="margin-bottom: 0;">로그</span>
+          <div class="row" style="gap: 6px;">
+            <button id="copyLogBtn" type="button">복사</button>
+            <button id="clearLogBtn" type="button">지우기</button>
+          </div>
+        </div>
+        <div id="log"></div>
+      </div>
+    </div>
+    <script>
+"use strict";
+(() => {
+  var __defProp = Object.defineProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // src/jl-auth.ts
+  var KS_TABLE = [
+    100,
+    172,
+    40,
+    90,
+    201,
+    179,
+    55,
+    197,
+    10,
+    16,
+    183,
+    163,
+    186,
+    177,
+    151,
+    70,
+    61,
+    5,
+    220,
+    102,
+    110,
+    246,
+    154,
+    248,
+    13,
+    88,
+    149,
+    103,
+    198,
+    170,
+    171,
+    236,
+    160,
+    104,
+    155,
+    150,
+    212,
+    235,
+    191,
+    67,
+    73,
+    54,
+    233,
+    106,
+    137,
+    216,
+    195,
+    138,
+    148,
+    99,
+    153,
+    188,
+    123,
+    190,
+    193,
+    34,
+    187,
+    92,
+    113,
+    213,
+    31,
+    146,
+    87,
+    93,
+    143,
+    68,
+    65,
+    29,
+    81,
+    230,
+    64,
+    23,
+    251,
+    253,
+    25,
+    50,
+    52,
+    184,
+    97,
+    42,
+    202,
+    35,
+    111,
+    218,
+    57,
+    247,
+    162,
+    1,
+    127,
+    214,
+    49,
+    231,
+    222,
+    128,
+    4,
+    221,
+    44,
+    89,
+    130,
+    175,
+    168,
+    224,
+    15,
+    205,
+    161,
+    18,
+    62,
+    48,
+    209,
+    28,
+    208,
+    58,
+    51,
+    114,
+    46,
+    79,
+    144,
+    2,
+    19,
+    6,
+    117,
+    206,
+    135,
+    194,
+    239,
+    178,
+    173,
+    125,
+    56,
+    21,
+    225,
+    82,
+    159,
+    122,
+    108,
+    47,
+    39,
+    196,
+    226,
+    129,
+    169,
+    207,
+    141,
+    192,
+    215,
+    223,
+    255,
+    96,
+    118,
+    20,
+    140,
+    94,
+    85,
+    9,
+    228,
+    8,
+    199,
+    66,
+    32,
+    252,
+    210,
+    80,
+    145,
+    217,
+    76,
+    98,
+    158,
+    232,
+    185,
+    166,
+    249,
+    26,
+    0,
+    33,
+    11,
+    250,
+    53,
+    156,
+    78,
+    75,
+    105,
+    72,
+    203,
+    14,
+    200,
+    164,
+    91,
+    234,
+    132,
+    7,
+    180,
+    24,
+    244,
+    174,
+    107,
+    219,
+    167,
+    204,
+    63,
+    139,
+    74,
+    12,
+    60,
+    37,
+    229,
+    84,
+    77,
+    69,
+    131,
+    237,
+    17,
+    240,
+    176,
+    83,
+    147,
+    242,
+    116,
+    38,
+    181,
+    157,
+    109,
+    124,
+    243,
+    45,
+    241,
+    86,
+    36,
+    126,
+    71,
+    27,
+    134,
+    189,
+    112,
+    142,
+    30,
+    59,
+    115,
+    22,
+    3,
+    182,
+    172,
+    40,
+    90,
+    201,
+    179,
+    55,
+    197,
+    10,
+    16,
+    183,
+    163,
+    186,
+    177,
+    151,
+    70,
+    136
+  ];
+  var SBOX = [
+    1,
+    45,
+    226,
+    147,
+    190,
+    69,
+    21,
+    174,
+    120,
+    3,
+    135,
+    164,
+    184,
+    56,
+    207,
+    63,
+    8,
+    103,
+    9,
+    148,
+    235,
+    38,
+    168,
+    107,
+    189,
+    24,
+    52,
+    27,
+    187,
+    191,
+    114,
+    247,
+    64,
+    53,
+    72,
+    156,
+    81,
+    47,
+    59,
+    85,
+    227,
+    192,
+    159,
+    216,
+    211,
+    243,
+    141,
+    177,
+    255,
+    167,
+    62,
+    220,
+    134,
+    119,
+    215,
+    166,
+    17,
+    251,
+    244,
+    186,
+    146,
+    145,
+    100,
+    131,
+    241,
+    51,
+    239,
+    218,
+    44,
+    181,
+    178,
+    43,
+    136,
+    209,
+    153,
+    203,
+    140,
+    132,
+    29,
+    20,
+    129,
+    151,
+    113,
+    202,
+    95,
+    163,
+    139,
+    87,
+    60,
+    130,
+    196,
+    82,
+    92,
+    28,
+    232,
+    160,
+    4,
+    180,
+    133,
+    74,
+    246,
+    19,
+    84,
+    182,
+    223,
+    12,
+    26,
+    142,
+    222,
+    224,
+    57,
+    252,
+    32,
+    155,
+    36,
+    78,
+    169,
+    152,
+    158,
+    171,
+    242,
+    96,
+    208,
+    108,
+    234,
+    250,
+    199,
+    217,
+    0,
+    212,
+    31,
+    110,
+    67,
+    188,
+    236,
+    83,
+    137,
+    254,
+    122,
+    93,
+    73,
+    201,
+    50,
+    194,
+    249,
+    154,
+    248,
+    109,
+    22,
+    219,
+    89,
+    150,
+    68,
+    233,
+    205,
+    230,
+    70,
+    66,
+    143,
+    10,
+    193,
+    204,
+    185,
+    101,
+    176,
+    210,
+    198,
+    172,
+    30,
+    65,
+    98,
+    41,
+    46,
+    14,
+    116,
+    80,
+    2,
+    90,
+    195,
+    37,
+    123,
+    138,
+    42,
+    91,
+    240,
+    6,
+    13,
+    71,
+    111,
+    112,
+    157,
+    126,
+    16,
+    206,
+    18,
+    39,
+    213,
+    76,
+    79,
+    214,
+    121,
+    48,
+    104,
+    54,
+    117,
+    125,
+    228,
+    237,
+    128,
+    106,
+    144,
+    55,
+    162,
+    94,
+    118,
+    170,
+    197,
+    127,
+    61,
+    175,
+    165,
+    229,
+    25,
+    97,
+    253,
+    77,
+    124,
+    183,
+    11,
+    238,
+    173,
+    75,
+    34,
+    245,
+    231,
+    115,
+    35,
+    33,
+    200,
+    5,
+    225,
+    102,
+    221,
+    179,
+    88,
+    105,
+    99,
+    86,
+    15,
+    161,
+    49,
+    149,
+    23,
+    7,
+    58,
+    40
+  ];
+  var ISBOX = [
+    128,
+    0,
+    176,
+    9,
+    96,
+    239,
+    185,
+    253,
+    16,
+    18,
+    159,
+    228,
+    105,
+    186,
+    173,
+    248,
+    192,
+    56,
+    194,
+    101,
+    79,
+    6,
+    148,
+    252,
+    25,
+    222,
+    106,
+    27,
+    93,
+    78,
+    168,
+    130,
+    112,
+    237,
+    232,
+    236,
+    114,
+    179,
+    21,
+    195,
+    255,
+    171,
+    182,
+    71,
+    68,
+    1,
+    172,
+    37,
+    201,
+    250,
+    142,
+    65,
+    26,
+    33,
+    203,
+    211,
+    13,
+    110,
+    254,
+    38,
+    88,
+    218,
+    50,
+    15,
+    32,
+    169,
+    157,
+    132,
+    152,
+    5,
+    156,
+    187,
+    34,
+    140,
+    99,
+    231,
+    197,
+    225,
+    115,
+    198,
+    175,
+    36,
+    91,
+    135,
+    102,
+    39,
+    247,
+    87,
+    244,
+    150,
+    177,
+    183,
+    92,
+    139,
+    213,
+    84,
+    121,
+    223,
+    170,
+    246,
+    62,
+    163,
+    241,
+    17,
+    202,
+    245,
+    209,
+    23,
+    123,
+    147,
+    131,
+    188,
+    189,
+    82,
+    30,
+    235,
+    174,
+    204,
+    214,
+    53,
+    8,
+    200,
+    138,
+    180,
+    226,
+    205,
+    191,
+    217,
+    208,
+    80,
+    89,
+    63,
+    77,
+    98,
+    52,
+    10,
+    72,
+    136,
+    181,
+    86,
+    76,
+    46,
+    107,
+    158,
+    210,
+    61,
+    60,
+    3,
+    19,
+    251,
+    151,
+    81,
+    117,
+    74,
+    145,
+    113,
+    35,
+    190,
+    118,
+    42,
+    95,
+    249,
+    212,
+    85,
+    11,
+    220,
+    55,
+    49,
+    22,
+    116,
+    215,
+    119,
+    167,
+    230,
+    7,
+    219,
+    164,
+    47,
+    70,
+    243,
+    97,
+    69,
+    103,
+    227,
+    12,
+    162,
+    59,
+    28,
+    133,
+    24,
+    4,
+    29,
+    41,
+    160,
+    143,
+    178,
+    90,
+    216,
+    166,
+    126,
+    238,
+    141,
+    83,
+    75,
+    161,
+    154,
+    193,
+    14,
+    122,
+    73,
+    165,
+    44,
+    129,
+    196,
+    199,
+    54,
+    43,
+    127,
+    67,
+    149,
+    51,
+    242,
+    108,
+    104,
+    109,
+    240,
+    2,
+    40,
+    206,
+    221,
+    155,
+    234,
+    94,
+    153,
+    124,
+    20,
+    134,
+    207,
+    229,
+    66,
+    184,
+    64,
+    120,
+    45,
+    58,
+    233,
+    100,
+    31,
+    146,
+    144,
+    125,
+    57,
+    111,
+    224,
+    137,
+    48
+  ];
+  var STATIC_KEY = [
+    6,
+    119,
+    95,
+    135,
+    145,
+    141,
+    212,
+    35,
+    0,
+    93,
+    241,
+    216,
+    207,
+    12,
+    20,
+    43
+  ];
+  var MAGIC = [17, 34, 51, 51, 34, 17];
+  var MASK = 39321;
+  function keySchedule(data16) {
+    const out = new Array(272).fill(0);
+    for (let i = 0; i < 16; i++) out[i] = data16[i];
+    const buf = data16.slice(0, 16);
+    let checksum = 0;
+    for (const b of data16) checksum ^= b;
+    buf.push(checksum & 255);
+    for (let rnd = 0; rnd < 16; rnd++) {
+      for (let i = 0; i < 17; i++) {
+        const b = buf[i];
+        buf[i] = (b << 3 | b >>> 5) & 255;
+      }
+      let readPos = (rnd + 1) % 17;
+      for (let j = 0; j < 16; j++) {
+        const src = buf[readPos];
+        const tblIdx = 15 + rnd * 16 - j;
+        out[16 + rnd * 16 + j] = KS_TABLE[tblIdx] + src & 255;
+        readPos += 1;
+        if (readPos > 16) readPos = 0;
+      }
+    }
+    return out;
+  }
+  function fibonacciMix(s) {
+    const r = {};
+    const M = 4294967295;
+    r[16] = s[0];
+    r[17] = s[1];
+    r[3] = s[2];
+    r[4] = s[3];
+    r[5] = s[4];
+    r[6] = s[5];
+    r[7] = s[6];
+    r[19] = s[7];
+    r[20] = s[8];
+    r[21] = s[9];
+    r[22] = s[10];
+    r[23] = s[11];
+    r[24] = s[12];
+    r[25] = s[13];
+    r[26] = s[14];
+    r[27] = s[15];
+    r[28] = r[17] + r[16] * 2 & M;
+    r[16] = r[17] + r[16] & M;
+    r[17] = r[4] + r[3] * 2 & M;
+    r[3] = r[4] + r[3] & M;
+    r[4] = r[6] + r[5] * 2 & M;
+    r[5] = r[6] + r[5] & M;
+    r[6] = r[19] + r[7] * 2 & M;
+    r[7] = r[19] + r[7] & M;
+    r[19] = r[21] + r[20] * 2 & M;
+    r[20] = r[21] + r[20] & M;
+    r[21] = r[23] + r[22] * 2 & M;
+    r[22] = r[23] + r[22] & M;
+    r[23] = r[25] + r[24] * 2 & M;
+    r[24] = r[25] + r[24] & M;
+    r[25] = r[27] + r[26] * 2 & M;
+    r[26] = r[27] + r[26] & M;
+    r[27] = r[22] + r[19] * 2 & M;
+    r[19] = r[22] + r[19] & M;
+    r[22] = r[26] + r[23] * 2 & M;
+    r[23] = r[26] + r[23] & M;
+    r[26] = r[16] + r[17] * 2 & M;
+    r[16] = r[17] + r[16] & M;
+    r[17] = r[5] + r[6] * 2 & M;
+    r[5] = r[6] + r[5] & M;
+    r[6] = r[20] + r[21] * 2 & M;
+    r[20] = r[21] + r[20] & M;
+    r[21] = r[24] + r[25] * 2 & M;
+    r[24] = r[25] + r[24] & M;
+    r[25] = r[7] + r[28] * 2 & M;
+    r[7] = r[7] + r[28] & M;
+    r[28] = r[3] + r[4] * 2 & M;
+    r[3] = r[4] + r[3] & M;
+    r[4] = r[24] + r[6] * 2 & M;
+    r[6] = r[24] + r[6] & M;
+    r[24] = r[3] + r[25] * 2 & M;
+    r[3] = r[25] + r[3] & M;
+    r[25] = r[19] + r[22] * 2 & M;
+    r[19] = r[22] + r[19] & M;
+    r[22] = r[16] + r[17] * 2 & M;
+    r[16] = r[17] + r[16] & M;
+    r[17] = r[20] + r[21] * 2 & M;
+    r[20] = r[21] + r[20] & M;
+    r[21] = r[7] + r[28] * 2 & M;
+    r[7] = r[7] + r[28] & M;
+    r[28] = r[5] + r[27] * 2 & M;
+    r[5] = r[27] + r[5] & M;
+    r[27] = r[23] + r[26] * 2 & M;
+    r[23] = r[23] + r[26] & M;
+    r[26] = r[7] + r[17] * 2 & M;
+    r[17] = r[17] + r[7] & M;
+    r[7] = r[23] + r[28] * 2 & M;
+    r[23] = r[23] + r[28] & M;
+    r[28] = r[6] + r[24] * 2 & M;
+    r[6] = r[6] + r[24] & M;
+    r[24] = r[19] + r[22] * 2 & M;
+    r[19] = r[19] + r[22] & M;
+    r[22] = r[20] + r[21] * 2 & M;
+    r[20] = r[20] + r[21] & M;
+    r[21] = r[5] + r[27] * 2 & M;
+    r[5] = r[27] + r[5] & M;
+    r[27] = r[16] + r[4] * 2 & M;
+    r[16] = r[4] + r[16] & M;
+    r[4] = r[3] + r[25] * 2 & M;
+    r[3] = r[25] + r[3] & M;
+    return [
+      r[26] & 255,
+      r[17] & 255,
+      r[7] & 255,
+      r[23] & 255,
+      r[28] & 255,
+      r[6] & 255,
+      r[24] & 255,
+      r[19] & 255,
+      r[22] & 255,
+      r[20] & 255,
+      r[21] & 255,
+      r[5] & 255,
+      r[27] & 255,
+      r[16] & 255,
+      r[4] & 255,
+      r[3] & 255
+    ];
+  }
+  function condMix(state, keyBlock, mask, phase) {
+    const result = state.slice();
+    for (let i = 0; i < 16; i++) {
+      const bitSet = (1 << i & mask) !== 0;
+      if (phase === 3) {
+        result[i] = bitSet ? result[i] ^ keyBlock[i] : keyBlock[i] + result[i] & 255;
+      } else {
+        result[i] = bitSet ? keyBlock[i] + result[i] & 255 : result[i] ^ keyBlock[i];
+      }
+    }
+    return result;
+  }
+  function sboxSub(state) {
+    const result = state.slice();
+    for (const pos of [0, 3, 4, 7, 8, 11, 12, 15]) result[pos] = SBOX[result[pos]];
+    for (const pos of [1, 2, 5, 6, 9, 10, 13, 14]) result[pos] = ISBOX[result[pos]];
+    return result;
+  }
+  function blockCipher(stateIn, ek, mode) {
+    let s = stateIn.slice();
+    const initial = stateIn.slice();
+    s = condMix(s, ek.slice(0, 16), MASK, 3);
+    s = sboxSub(s);
+    s = condMix(s, ek.slice(16, 32), MASK, 5);
+    for (let x9 = 1; x9 <= 8; x9++) {
+      s = fibonacciMix(s);
+      const ekOff = x9 * 32;
+      if (x9 === 8) {
+        s = condMix(s, ek.slice(256, 272), MASK, 3);
+        break;
+      }
+      if (mode !== 0 && x9 === 2) {
+        for (let i = 0; i < 16; i++) {
+          const bitSet = (1 << i & MASK) !== 0;
+          s[i] = bitSet ? s[i] ^ initial[i] : initial[i] + s[i] & 255;
+        }
+      }
+      s = condMix(s, ek.slice(ekOff, ekOff + 16), MASK, 3);
+      s = sboxSub(s);
+      s = condMix(s, ek.slice(ekOff + 16, ekOff + 32), MASK, 5);
+    }
+    return s;
+  }
+  function functionE1test(key6, input16, seed16) {
+    const expandedKey = Array.from({ length: 16 }, (_, i) => key6[i % 6]);
+    const output = input16.slice(0, 16);
+    const ks1 = keySchedule(seed16.slice(0, 16));
+    const cipherOut = blockCipher(output, ks1, 0);
+    for (let i = 0; i < 16; i++) {
+      cipherOut[i] = expandedKey[i] + (cipherOut[i] ^ input16[i]) & 255;
+    }
+    const obf = [
+      seed16[0] - 23 & 255,
+      seed16[1] ^ 229,
+      seed16[2] - 33 & 255,
+      seed16[3] ^ 193,
+      seed16[4] - 77 & 255,
+      seed16[5] ^ 167,
+      seed16[6] - 107 & 255,
+      seed16[7] ^ 131,
+      seed16[8] ^ 233,
+      seed16[9] - 27 & 255,
+      seed16[10] ^ 223,
+      seed16[11] - 63 & 255,
+      seed16[12] ^ 179,
+      seed16[13] - 89 & 255,
+      seed16[14] ^ 149,
+      seed16[15] - 125 & 255
+    ];
+    const ks2 = keySchedule(obf);
+    return blockCipher(cipherOut, ks2, 1);
+  }
+  function getRandomAuthData() {
+    const result = new Uint8Array(17);
+    result[0] = 0;
+    crypto.getRandomValues(result.subarray(1));
+    return result;
+  }
+  function getEncryptedAuthData(deviceData17) {
+    const input16 = Array.from(deviceData17.subarray(1, 17));
+    const encrypted = functionE1test(MAGIC, input16, STATIC_KEY);
+    const result = new Uint8Array(17);
+    result[0] = 1;
+    for (let i = 0; i < 16; i++) result[i + 1] = encrypted[i];
+    return result;
+  }
+
+  // src/crc16.ts
+  function crc16xmodem(data) {
+    let crc = 0;
+    for (let i = 0; i < data.length; i++) {
+      crc ^= data[i] << 8;
+      for (let j = 0; j < 8; j++) {
+        if (crc & 32768) {
+          crc = (crc << 1 ^ 4129) & 65535;
+        } else {
+          crc = crc << 1 & 65535;
+        }
+      }
+    }
+    return crc & 65535;
+  }
+
+  // src/e87-client.ts
+  var SVC_AE = 44544;
+  var ae = (n) => `0000ae0${n}-0000-1000-8000-00805f9b34fb`;
+  var FD_SVC = "c2e6fd00-e966-1000-8000-bef9c223df6a";
+  var fd = (n) => `c2e6fd0${n}-e966-1000-8000-bef9c223df6a`;
+  var E87_IMAGE_SIZE = 368;
+  var DATA_CHUNK = 490;
+  var MAGIC2 = [254, 220, 186];
+  var TRAILER = 239;
+  var FLAG_REQ = 192;
+  var FLAG_RESP = 0;
+  var FLAG_DATA = 128;
+  var CMD_RESET_AUTH = 6;
+  var CMD_DEV_INFO = 3;
+  var CMD_SYS_INFO = 7;
+  var CMD_BEGIN = 33;
+  var CMD_PARAMS = 39;
+  var CMD_FILE_META = 27;
+  var CMD_DATA = 1;
+  var CMD_WINDOW_ACK = 29;
+  var CMD_COMPLETE = 32;
+  var CMD_FINALIZE = 28;
+  function buildFrame(flag, cmd, body) {
+    const len = body.length;
+    const out = new Uint8Array(3 + 1 + 1 + 2 + len + 1);
+    out.set(MAGIC2, 0);
+    out[3] = flag;
+    out[4] = cmd;
+    out[5] = len >> 8 & 255;
+    out[6] = len & 255;
+    out.set(body, 7);
+    out[7 + len] = TRAILER;
+    return out;
+  }
+  function parseFrame(data) {
+    if (data.length < 8) return null;
+    if (data[0] !== 254 || data[1] !== 220 || data[2] !== 186) return null;
+    const flag = data[3];
+    const cmd = data[4];
+    const len = data[5] << 8 | data[6];
+    const body = data.subarray(7, 7 + len);
+    return { flag, cmd, body, raw: data };
+  }
+  function hex(data, max = 32) {
+    const n = Math.min(data.length, max);
+    let s = "";
+    for (let i = 0; i < n; i++) s += data[i].toString(16).padStart(2, "0") + " ";
+    if (data.length > max) s += `\u2026 (+${data.length - max})`;
+    return s.trim();
+  }
+  var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  var E87Client = class {
+    constructor(log2 = () => {
+    }) {
+      this.log = log2;
+      /** Called whenever the GATT link drops (so the UI can reset its state). */
+      __publicField(this, "onDisconnect");
+      __publicField(this, "conn", null);
+      __publicField(this, "ae02Buf", []);
+      __publicField(this, "ae02Waiters", []);
+      __publicField(this, "fdLast", /* @__PURE__ */ new Map());
+      __publicField(this, "seq", 0);
+      __publicField(this, "aborted", false);
+      __publicField(this, "autoRespond20", false);
+      __publicField(this, "fileCompleteHandled", false);
+      __publicField(this, "authenticated", false);
+    }
+    get connected() {
+      return !!this.conn?.device.gatt?.connected;
+    }
+    // ── connect / disconnect ─────────────────────────────────
+    async connect() {
+      if (!navigator.bluetooth) throw new Error("Web Bluetooth not supported in this browser");
+      this.authenticated = false;
+      this.log("info", "requesting device\u2026");
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SVC_AE] }, { namePrefix: "E87" }],
+        optionalServices: [SVC_AE, FD_SVC, "battery_service"]
+      });
+      this.log("info", `selected ${device.name ?? "(unnamed)"}`);
+      device.addEventListener("gattserverdisconnected", () => {
+        this.log("warn", "GATT disconnected");
+        this.conn = null;
+        this.authenticated = false;
+        this.onDisconnect?.();
+      });
+      const server = await device.gatt.connect();
+      this.log("info", "GATT connected, discovering services\u2026");
+      const aeSvc = await server.getPrimaryService(SVC_AE);
+      const ae01 = await aeSvc.getCharacteristic(ae(1));
+      const ae02 = await aeSvc.getCharacteristic(ae(2));
+      const conn = { device, ae01, ae02 };
+      try {
+        const fdSvc = await server.getPrimaryService(FD_SVC);
+        conn.fd01 = await fdSvc.getCharacteristic(fd(1)).catch(() => void 0);
+        conn.fd02 = await fdSvc.getCharacteristic(fd(2)).catch(() => void 0);
+        conn.fd03 = await fdSvc.getCharacteristic(fd(3)).catch(() => void 0);
+        conn.fd05 = await fdSvc.getCharacteristic(fd(5)).catch(() => void 0);
+      } catch {
+        this.log("warn", "FD service not found (control sideband unavailable)");
+      }
+      await ae02.startNotifications();
+      ae02.addEventListener("characteristicvaluechanged", (e) => this.onAe02(e));
+      await this.subscribeFd(conn.fd01, "fd01");
+      await this.subscribeFd(conn.fd03, "fd03");
+      await this.subscribeFd(conn.fd05, "fd05");
+      this.conn = conn;
+      this.log("info", "subscribed; ready");
+    }
+    async disconnect() {
+      this.aborted = true;
+      this.authenticated = false;
+      try {
+        this.conn?.device.gatt?.disconnect();
+      } catch {
+      }
+      this.conn = null;
+    }
+    abort() {
+      this.aborted = true;
+    }
+    async subscribeFd(ch, name) {
+      if (!ch) return;
+      try {
+        await ch.startNotifications();
+        ch.addEventListener("characteristicvaluechanged", (e) => {
+          const v = new Uint8Array(e.target.value.buffer);
+          this.fdLast.set(name, v);
+        });
+      } catch {
+        this.log("warn", `could not subscribe ${name}`);
+      }
+    }
+    // ── notification plumbing ────────────────────────────────
+    onAe02(e) {
+      const v = new Uint8Array(e.target.value.buffer);
+      const f = parseFrame(v);
+      if (f) this.log("rx", `frame cmd=0x${f.cmd.toString(16)} flag=0x${f.flag.toString(16)} ${hex(f.body, 16)}`);
+      else this.log("rx", `raw ${hex(v, 20)}`);
+      if (this.autoRespond20 && !this.fileCompleteHandled && f && f.cmd === CMD_COMPLETE && f.flag === FLAG_REQ) {
+        this.fileCompleteHandled = true;
+        const devSeq = f.body[0] ?? 0;
+        this.log("tx", "auto-respond cmd 0x20 (file path)");
+        this.writeAe01(buildFrame(FLAG_RESP, CMD_COMPLETE, this.buildFilePathResponse(devSeq))).catch(() => {
+        });
+      }
+      for (let i = 0; i < this.ae02Waiters.length; i++) {
+        const w = this.ae02Waiters[i];
+        if (w.pred(v)) {
+          clearTimeout(w.timer);
+          this.ae02Waiters.splice(i, 1);
+          w.resolve(v);
+          return;
+        }
+      }
+      this.ae02Buf.push(v);
+    }
+    waitAe02(pred, timeoutMs) {
+      for (let i = 0; i < this.ae02Buf.length; i++) {
+        if (pred(this.ae02Buf[i])) {
+          const [d] = this.ae02Buf.splice(i, 1);
+          return Promise.resolve(d);
+        }
+      }
+      return new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          const idx = this.ae02Waiters.findIndex((w) => w.timer === timer);
+          if (idx >= 0) this.ae02Waiters.splice(idx, 1);
+          reject(new Error("timeout waiting for badge response"));
+        }, timeoutMs);
+        this.ae02Waiters.push({ pred, resolve, reject, timer });
+      });
+    }
+    async waitFrame(cmd, flag, timeoutMs) {
+      const raw = await this.waitAe02((d) => {
+        const f = parseFrame(d);
+        return !!f && f.cmd === cmd && f.flag === flag;
+      }, timeoutMs);
+      return parseFrame(raw);
+    }
+    async waitFrameAny(cmds, timeoutMs) {
+      const raw = await this.waitAe02((d) => {
+        const f = parseFrame(d);
+        return !!f && cmds.includes(f.cmd);
+      }, timeoutMs);
+      return parseFrame(raw);
+    }
+    // ── low-level writes ─────────────────────────────────────
+    async writeAe01(data) {
+      await this.conn.ae01.writeValueWithoutResponse(data);
+    }
+    async sendFrame(flag, cmd, body) {
+      const f = buildFrame(flag, cmd, body);
+      this.log("tx", `frame cmd=0x${cmd.toString(16)} flag=0x${flag.toString(16)} ${hex(body, 16)}`);
+      await this.writeAe01(f);
+    }
+    async writeFd02(data) {
+      if (!this.conn?.fd02) return;
+      this.log("tx", `fd02 ${hex(data, 16)}`);
+      try {
+        await this.conn.fd02.writeValueWithoutResponse(data);
+      } catch {
+        try {
+          await this.conn.fd02.writeValue(data);
+        } catch {
+        }
+      }
+    }
+    // ── auth handshake ───────────────────────────────────────
+    async authenticate() {
+      this.log("info", "auth: sending challenge");
+      await this.writeAe01(getRandomAuthData());
+      await this.waitAe02((d) => d.length >= 1 && d[0] === 1, 5e3).catch(() => {
+        this.log("warn", "auth: no device response to challenge (continuing)");
+      });
+      await this.writeAe01(Uint8Array.of(2, 112, 97, 115, 115));
+      const challenge = await this.waitAe02((d) => d.length >= 17 && d[0] === 0, 5e3);
+      await this.writeAe01(getEncryptedAuthData(challenge));
+      await this.waitAe02((d) => d.length >= 1 && d[0] === 2, 5e3).catch(() => {
+        this.log("warn", 'auth: no final "pass" (continuing optimistically)');
+      });
+      this.log("info", "auth: complete");
+    }
+    // ── control handshake (phases 1–7) ───────────────────────
+    async controlHandshake() {
+      await this.sendFrame(FLAG_REQ, CMD_RESET_AUTH, Uint8Array.of(2, 0, 1));
+      this.seq = 1;
+      await sleep(120);
+      await this.writeFd02(this.buildTimeFd02());
+      await this.writeFd02(Uint8Array.of(158, 32, 8, 22, 1, 0, 1));
+      await this.writeFd02(Uint8Array.of(158, 181, 11, 41, 1, 0, 128));
+      await sleep(120);
+      await this.sendFrame(FLAG_REQ, CMD_DEV_INFO, Uint8Array.of(this.seq, 255, 255, 255, 255, 1));
+      this.seq++;
+      await this.waitFrame(CMD_DEV_INFO, FLAG_RESP, 2500).catch(() => this.log("warn", "no dev-info ack"));
+      await this.sendFrame(FLAG_REQ, CMD_SYS_INFO, Uint8Array.of(this.seq, 255, 255, 255, 255, 255));
+      this.seq++;
+      await this.waitFrame(CMD_SYS_INFO, FLAG_RESP, 2500).catch(() => this.log("warn", "no sys-info ack"));
+      await this.writeFd02(Uint8Array.of(158, 181, 11, 41, 1, 0, 128));
+      await sleep(400);
+      await this.writeFd02(Uint8Array.of(158, 211, 11, 198, 1, 0, 1));
+      await sleep(300);
+      await this.writeFd02(Uint8Array.of(158, 244, 11, 220, 1, 0, 12));
+      await sleep(300);
+      await this.sendFrame(FLAG_REQ, CMD_BEGIN, Uint8Array.of(this.seq, 0));
+      this.seq++;
+      await this.waitFrame(CMD_BEGIN, FLAG_RESP, 4e3);
+      await this.sendFrame(FLAG_REQ, CMD_PARAMS, Uint8Array.of(this.seq, 0, 0, 0, 0, 2, 1));
+      this.seq++;
+      await this.waitFrame(CMD_PARAMS, FLAG_RESP, 4e3);
+    }
+    buildTimeFd02() {
+      const now = /* @__PURE__ */ new Date();
+      const y = now.getFullYear();
+      return Uint8Array.of(
+        158,
+        69,
+        8,
+        2,
+        7,
+        0,
+        y >> 8 & 255,
+        y & 255,
+        now.getMonth() + 1,
+        now.getDate(),
+        0,
+        now.getHours(),
+        now.getMinutes()
+      );
+    }
+    // ── upload ───────────────────────────────────────────────
+    /** Upload a complete JPEG file (already encoded, 368×368) to the badge. */
+    async uploadJpeg(jpeg, onProgress = () => {
+    }) {
+      if (!this.connected) throw new Error("not connected");
+      this.aborted = false;
+      this.ae02Buf = [];
+      this.fileCompleteHandled = false;
+      this.autoRespond20 = false;
+      if (!this.authenticated) {
+        await this.authenticate();
+        this.authenticated = true;
+      } else {
+        this.log("info", "reusing authenticated session");
+      }
+      await this.controlHandshake();
+      const fileCrc = crc16xmodem(jpeg);
+      const name = this.tempName();
+      await this.sendFrame(FLAG_REQ, CMD_FILE_META, this.buildMetaBody(jpeg.length, fileCrc, name));
+      this.seq++;
+      const metaAck = await this.waitFrame(CMD_FILE_META, FLAG_RESP, 5e3);
+      let chunkSize = DATA_CHUNK;
+      if (metaAck.body.length >= 4) {
+        const cs = metaAck.body[2] << 8 | metaAck.body[3];
+        if (cs > 0 && cs <= 4096) chunkSize = cs;
+      }
+      this.log("info", `metadata acked \u2014 size=${jpeg.length}B crc=0x${fileCrc.toString(16)} chunk=${chunkSize} name=${name}`);
+      this.autoRespond20 = true;
+      let best = 0;
+      const reportProgress = (reached) => {
+        if (reached > best) {
+          best = reached;
+          onProgress(best, jpeg.length);
+        }
+      };
+      let currentAck = await this.waitFrame(CMD_WINDOW_ACK, FLAG_DATA, 1e4);
+      let done = false;
+      while (!done) {
+        if (this.aborted) throw new Error("aborted");
+        if (currentAck.cmd === CMD_WINDOW_ACK && currentAck.body.length >= 8) {
+          const b = currentAck.body;
+          const winSize = b[2] << 8 | b[3];
+          const nextOffset = (b[4] << 24 | b[5] << 16 | b[6] << 8 | b[7]) >>> 0;
+          await this.sendChunksAt(jpeg, nextOffset, winSize, chunkSize, reportProgress);
+          if (nextOffset === 0) this.log("info", "commit chunk sent");
+        }
+        const frame = await this.waitFrameAny([CMD_WINDOW_ACK, CMD_COMPLETE, CMD_FINALIZE], 15e3);
+        if (frame.cmd === CMD_COMPLETE && frame.flag === FLAG_REQ) {
+          if (!this.fileCompleteHandled) {
+            await this.sendFrame(FLAG_RESP, CMD_COMPLETE, this.buildFilePathResponse(frame.body[0] ?? 0));
+            this.fileCompleteHandled = true;
+          }
+          const close = await this.waitFrame(CMD_FINALIZE, FLAG_REQ, 15e3).catch(() => null);
+          const finSeq = close?.body[0] ?? 0;
+          await this.sendFrame(FLAG_RESP, CMD_FINALIZE, Uint8Array.of(0, finSeq));
+          done = true;
+          break;
+        }
+        if (frame.cmd === CMD_FINALIZE) {
+          await this.sendFrame(FLAG_RESP, CMD_FINALIZE, Uint8Array.of(0, frame.body[0] ?? 0));
+          done = true;
+          break;
+        }
+        currentAck = frame;
+      }
+      this.autoRespond20 = false;
+      onProgress(jpeg.length, jpeg.length);
+      this.log("info", "\u2705 upload complete");
+    }
+    async sendChunksAt(jpeg, offset, winSize, chunkSize, onReached) {
+      let slot = 0;
+      let bytesSent = 0;
+      let chunks = 0;
+      while (bytesSent < winSize) {
+        if (this.aborted) throw new Error("aborted");
+        const chunkOffset = offset + bytesSent;
+        if (chunkOffset >= jpeg.length) break;
+        const remaining = Math.min(winSize - bytesSent, jpeg.length - chunkOffset);
+        const chunkLen = Math.min(chunkSize, remaining);
+        const payload = jpeg.subarray(chunkOffset, chunkOffset + chunkLen);
+        const crc = crc16xmodem(payload);
+        const body = new Uint8Array(5 + payload.length);
+        body[0] = this.seq & 255;
+        body[1] = 29;
+        body[2] = slot & 7;
+        body[3] = crc >> 8 & 255;
+        body[4] = crc & 255;
+        body.set(payload, 5);
+        await this.writeAe01(buildFrame(FLAG_DATA, CMD_DATA, body));
+        this.seq = this.seq + 1 & 255;
+        slot = slot + 1 & 7;
+        bytesSent += chunkLen;
+        chunks++;
+        onReached(chunkOffset + chunkLen);
+      }
+      this.log("tx", `window: ${chunks} chunks from offset ${offset} (${bytesSent}B)`);
+    }
+    buildMetaBody(size, crc, name) {
+      const nameBytes = new TextEncoder().encode(name);
+      const body = new Uint8Array(1 + 4 + 2 + nameBytes.length + 1);
+      let p = 0;
+      body[p++] = this.seq;
+      body[p++] = size >>> 24 & 255;
+      body[p++] = size >>> 16 & 255;
+      body[p++] = size >>> 8 & 255;
+      body[p++] = size & 255;
+      body[p++] = crc >> 8 & 255;
+      body[p++] = crc & 255;
+      body.set(nameBytes, p);
+      p += nameBytes.length;
+      body[p] = 0;
+      return body;
+    }
+    buildFilePathResponse(devSeq) {
+      const d = /* @__PURE__ */ new Date();
+      const z = (n, w = 2) => n.toString().padStart(w, "0");
+      const dateStr = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+      const path = `\u555C${dateStr}.jpg`;
+      const u16 = new Uint8Array(path.length * 2 + 2);
+      for (let i = 0; i < path.length; i++) {
+        const c = path.charCodeAt(i);
+        u16[i * 2] = c & 255;
+        u16[i * 2 + 1] = c >> 8 & 255;
+      }
+      const resp = new Uint8Array(2 + u16.length);
+      resp[0] = 0;
+      resp[1] = devSeq;
+      resp.set(u16, 2);
+      return resp;
+    }
+    tempName() {
+      const r = crypto.getRandomValues(new Uint8Array(4));
+      let s = "";
+      for (const b of r) s += b.toString(16).padStart(2, "0");
+      return `${s}.tmp`;
+    }
+  };
+
+  // src/image.ts
+  var TARGET_MAX_BYTES = 6e4;
+  var QUALITY_STEPS = [0.9, 0.85, 0.8, 0.72, 0.64, 0.56, 0.48, 0.4, 0.32, 0.25];
+  async function fileToBadgeJpeg(file, maxBytes = TARGET_MAX_BYTES) {
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      throw new Error("\uC774\uBBF8\uC9C0\uB97C \uC77D\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4 (\uC9C0\uC6D0\uD558\uC9C0 \uC54A\uB294 \uD615\uC2DD\uC77C \uC218 \uC788\uC5B4\uC694).");
+    }
+    const side = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - side) / 2;
+    const sy = (bitmap.height - side) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = E87_IMAGE_SIZE;
+    canvas.height = E87_IMAGE_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas 2D \uCEE8\uD14D\uC2A4\uD2B8\uB97C \uB9CC\uB4E4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, E87_IMAGE_SIZE, E87_IMAGE_SIZE);
+    bitmap.close();
+    let chosen = null;
+    let chosenQ = QUALITY_STEPS[0];
+    for (const q of QUALITY_STEPS) {
+      const blob = await encodeJpeg(canvas, q);
+      chosen = blob;
+      chosenQ = q;
+      if (blob.size <= maxBytes) break;
+    }
+    if (!chosen) throw new Error("JPEG \uC778\uCF54\uB529\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.");
+    const jpeg = new Uint8Array(await chosen.arrayBuffer());
+    const previewUrl = URL.createObjectURL(chosen);
+    return {
+      jpeg,
+      previewUrl,
+      width: E87_IMAGE_SIZE,
+      height: E87_IMAGE_SIZE,
+      quality: chosenQ,
+      overBudget: jpeg.length > maxBytes,
+      maxBytes
+    };
+  }
+  function encodeJpeg(canvas, quality) {
+    return new Promise(
+      (resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error("JPEG \uC778\uCF54\uB529 \uC2E4\uD328")), "image/jpeg", quality)
+    );
+  }
+
+  // src/main.ts
+  var $ = (id) => document.getElementById(id);
+  var connectBtn = $("connectBtn");
+  var disconnectBtn = $("disconnectBtn");
+  var uploadBtn = $("uploadBtn");
+  var stopBtn = $("stopBtn");
+  var fileInput = $("fileInput");
+  var preview = $("preview");
+  var imgMeta = $("imgMeta");
+  var dot = $("dot");
+  var statusText = $("statusText");
+  var prog = $("prog");
+  var logEl = $("log");
+  var unsupported = $("unsupported");
+  var copyLogBtn = $("copyLogBtn");
+  var clearLogBtn = $("clearLogBtn");
+  function log(level, msg) {
+    const line = document.createElement("div");
+    line.className = `log-${level}`;
+    const t = (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour12: false });
+    line.textContent = `${t}  ${level.toUpperCase().padEnd(4)} ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  var client = new E87Client(log);
+  client.onDisconnect = () => setConnected(false);
+  var encoded = null;
+  function setConnected(on) {
+    dot.classList.toggle("on", on);
+    statusText.textContent = on ? "\uC5F0\uACB0\uB428: E87" : "\uBBF8\uC5F0\uACB0";
+    connectBtn.disabled = on;
+    disconnectBtn.disabled = !on;
+    refreshUploadBtn();
+  }
+  function refreshUploadBtn() {
+    uploadBtn.disabled = !(client.connected && encoded);
+  }
+  if (!navigator.bluetooth) {
+    unsupported.classList.remove("hidden");
+    connectBtn.disabled = true;
+  }
+  connectBtn.addEventListener("click", async () => {
+    try {
+      await client.connect();
+      setConnected(true);
+    } catch (e) {
+      log("err", e.message);
+    }
+  });
+  disconnectBtn.addEventListener("click", async () => {
+    await client.disconnect();
+    setConnected(false);
+  });
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      log("info", `encoding ${file.name}\u2026`);
+      encoded = await fileToBadgeJpeg(file);
+      preview.src = encoded.previewUrl;
+      const kb = (encoded.jpeg.length / 1024).toFixed(1);
+      const qPct = Math.round(encoded.quality * 100);
+      imgMeta.innerHTML = `<b>368\xD7368</b> JPEG \xB7 <b>${kb} KB</b> \xB7 \uD488\uC9C8 ${qPct}%`;
+      log("info", `encoded: ${encoded.jpeg.length} bytes (quality ${qPct}%)`);
+      if (encoded.overBudget) {
+        log("warn", `\uC774\uBBF8\uC9C0\uAC00 \uAD8C\uC7A5 \uC6A9\uB7C9(${Math.round(encoded.maxBytes / 1024)}KB)\uC744 \uB118\uC2B5\uB2C8\uB2E4 \u2014 \uC804\uC1A1\uC774 \uC2E4\uD328\uD560 \uC218 \uC788\uC5B4\uC694.`);
+      }
+      refreshUploadBtn();
+    } catch (e) {
+      log("err", e.message);
+    }
+  });
+  uploadBtn.addEventListener("click", async () => {
+    if (!encoded) return;
+    uploadBtn.disabled = true;
+    stopBtn.disabled = false;
+    prog.value = 0;
+    try {
+      await client.uploadJpeg(encoded.jpeg, (sent, total) => {
+        prog.value = Math.round(sent / total * 100);
+      });
+      prog.value = 100;
+    } catch (e) {
+      log("err", e.message);
+    } finally {
+      stopBtn.disabled = true;
+      refreshUploadBtn();
+    }
+  });
+  stopBtn.addEventListener("click", () => {
+    client.abort();
+    log("warn", "abort requested");
+  });
+  copyLogBtn.addEventListener("click", async () => {
+    const text = logEl.innerText;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    const original = copyLogBtn.textContent;
+    copyLogBtn.textContent = "\uBCF5\uC0AC\uB428 \u2713";
+    setTimeout(() => copyLogBtn.textContent = original, 1200);
+  });
+  clearLogBtn.addEventListener("click", () => {
+    logEl.replaceChildren();
+  });
+  log("info", "ready \u2014 connect the badge (single-press its Bluetooth button first)");
+})();
+
+</script>
+  </body>
+</html>
