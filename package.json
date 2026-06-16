@@ -4,6 +4,11 @@
   "description": "Web Bluetooth controller for the E87 / L8 JieLi LED badge (ZRun-compatible)",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=11"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

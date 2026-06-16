@@ -18,11 +18,14 @@ provides it) or `localhost`.
 
 ## Develop
 
+Requires [pnpm](https://pnpm.io) 11+ (Node 20+). With [Corepack](https://nodejs.org/api/corepack.html)
+enabled (`corepack enable`), the pinned version is used automatically.
+
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # static output in dist/
-npm test         # verify auth cipher against captured vector (npx tsx tests/auth.test.ts)
+pnpm install
+pnpm dev         # http://localhost:5173
+pnpm build       # static output in dist/
+pnpm test        # verify auth cipher against captured vector (tsx tests/auth.test.ts)
 ```
 
 ## Deploy to GitHub Pages

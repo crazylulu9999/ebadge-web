@@ -1,0 +1,4 @@
+# pnpm 11+ settings (moved out of the package.json "pnpm" field).
+# Approve build scripts for trusted deps that need a postinstall.
+allowBuilds:
+  esbuild: true
