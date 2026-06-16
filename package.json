@@ -16,7 +16,7 @@
     "test": "tsx tests/auth.test.ts"
   },
   "devDependencies": {
-    "@types/web-bluetooth": "^0.0.20",
+    "@types/web-bluetooth": "^0.0.21",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
     "vite": "^8.0.16"
