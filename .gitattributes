@@ -1,0 +1,11 @@
+# 저장소에는 LF로 저장, 줄바꿈은 git이 자동 정규화
+* text=auto eol=lf
+
+# 바이너리 파일은 변환하지 않음
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
