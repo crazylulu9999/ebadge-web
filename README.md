@@ -18,7 +18,7 @@ provides it) or `localhost`.
 
 ## Develop
 
-Requires [pnpm](https://pnpm.io) 11+ (Node 20+). With [Corepack](https://nodejs.org/api/corepack.html)
+Requires [pnpm](https://pnpm.io) 11+ (Node 20.19+ or 22.12+). With [Corepack](https://nodejs.org/api/corepack.html)
 enabled (`corepack enable`), the pinned version is used automatically.
 
 ```bash
