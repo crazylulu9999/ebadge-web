@@ -93,8 +93,10 @@ const ANIM_QUALITY_STEPS = [0.8, 0.7, 0.6, 0.5, 0.42, 0.35, 0.28, 0.22]
 
 export interface EncodedAnimation {
   aviBytes: Uint8Array
-  /** Object URL of the first frame (for an <img> preview). */
+  /** Object URL of the first frame (== frameUrls[0]); a static <img> fallback. */
   previewUrl: string
+  /** Object URL per frame (the exact JPEGs in the AVI), for an animated preview. */
+  frameUrls: string[]
   frameCount: number
   fps: number
   sizeBytes: number
@@ -116,26 +118,31 @@ async function framesToAvi(
   if (frames.length === 0) throw new Error('프레임이 없습니다.')
 
   let chosenAvi: Uint8Array | null = null
+  let chosenBlobs: Blob[] = []
   let chosenQ = ANIM_QUALITY_STEPS[0]
   for (const q of ANIM_QUALITY_STEPS) {
+    const blobs: Blob[] = []
     const jpegs: Uint8Array[] = []
     for (const f of frames) {
       const blob = await encodeJpeg(f.canvas, q)
+      blobs.push(blob)
       jpegs.push(new Uint8Array(await blob.arrayBuffer()))
     }
     chosenAvi = buildMjpgAvi(jpegs, fps)
+    chosenBlobs = blobs
     chosenQ = q
     if (chosenAvi.length <= maxBytes) break
   }
   if (!chosenAvi) throw new Error('AVI 인코딩에 실패했습니다.')
 
-  // Preview from the first frame at the chosen quality.
-  const previewBlob = await encodeJpeg(frames[0].canvas, chosenQ)
-  const previewUrl = URL.createObjectURL(previewBlob)
+  // One object URL per frame (the exact bytes muxed into the AVI) so the preview
+  // can animate what the badge will actually display. frameUrls[0] == previewUrl.
+  const frameUrls = chosenBlobs.map((b) => URL.createObjectURL(b))
 
   return {
     aviBytes: chosenAvi,
-    previewUrl,
+    previewUrl: frameUrls[0],
+    frameUrls,
     frameCount: frames.length,
     fps,
     sizeBytes: chosenAvi.length,
