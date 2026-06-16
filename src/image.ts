@@ -10,7 +10,7 @@
 
 import { E87_IMAGE_SIZE } from './e87-client'
 import { buildMjpgAvi } from './avi'
-import { gifToFrames, imagesToFrames, fpsFromFrames, type BadgeFrame } from './media-frames'
+import { gifToFrames, imagesToFrames, videoToFrames, fpsFromFrames, type BadgeFrame } from './media-frames'
 
 /** Conservative upload budget. Well within sizes proven to work on hardware. */
 export const TARGET_MAX_BYTES = 60000
@@ -164,6 +164,22 @@ export async function filesToBadgeAnimation(
   const frames = await imagesToFrames(files, frameMs, { maxFrames: opts.maxFrames })
   // Derive fps from the frames' actual durations so it stays consistent with
   // imagesToFrames' handling of out-of-range frameMs.
+  const fps = fpsFromFrames(frames)
+  return framesToAvi(frames, fps, opts.maxBytes)
+}
+
+/** Sample a video into frames and build an MJPG-AVI for the badge. */
+export async function videoToBadgeAnimation(
+  file: File,
+  opts: { targetFps?: number; maxFrames?: number; maxSeconds?: number; maxBytes?: number } = {},
+): Promise<EncodedAnimation> {
+  const frames = await videoToFrames(file, {
+    targetFps: opts.targetFps,
+    maxFrames: opts.maxFrames,
+    maxSeconds: opts.maxSeconds,
+  })
+  // Uniform per-frame durations → fpsFromFrames recovers ≈targetFps (clamped),
+  // matching framesToAvi's fixed-fps stream to the sampled cadence.
   const fps = fpsFromFrames(frames)
   return framesToAvi(frames, fps, opts.maxBytes)
 }

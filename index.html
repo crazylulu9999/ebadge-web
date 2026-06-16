@@ -108,10 +108,10 @@
         <div class="previewArea">
           <img id="preview" alt="preview" />
           <div>
-            <input type="file" id="fileInput" accept="image/*" multiple />
+            <input type="file" id="fileInput" accept="image/*,video/*" multiple />
             <p class="meta" id="imgMeta">
-              이미지 1장 → 정지 이미지, GIF → 애니메이션, 여러 장 선택 → 슬라이드쇼.
-              모두 368×368로 자동 크롭됩니다.
+              이미지 1장 → 정지 이미지, GIF / 동영상 → 애니메이션, 여러 장 선택 → 슬라이드쇼.
+              동영상은 처음 약 12초를 10fps로 샘플링합니다. 모두 368×368로 자동 크롭됩니다.
             </p>
           </div>
         </div>
