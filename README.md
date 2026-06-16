@@ -67,3 +67,7 @@ subpath without hardcoding the repo name.
 
 Protocol © the reverse-engineering work of hybridherbst and jumpingmushroom (MIT).
 Auth cipher tables/algorithm ported from `web-bluetooth-e87`.
+
+## License
+
+Released under the [MIT License](LICENSE).
