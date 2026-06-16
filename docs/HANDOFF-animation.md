@@ -3,14 +3,16 @@
 Context for continuing **ebadge-web** in Claude Code. v1 (static JPEG upload) works
 end-to-end on hardware. This doc covers adding animated content.
 
-> **STATUS (implemented, 2026-06-16):** GIF + slideshow → MJPG-AVI is implemented
-> in code and passes build + unit tests, but is **NOT yet confirmed on hardware**.
-> New files: `src/avi.ts` (verified-reference AVI muxer), `src/media-frames.ts`
-> (WebCodecs GIF/slideshow frame decode). `src/e87-client.ts` generalized to
-> `uploadFile(bytes, {mode})` with `uploadJpeg`/`uploadAnimation` wrappers;
-> `src/image.ts` gained `fileToBadgeAnimation`/`filesToBadgeAnimation`; the UI
-> accepts GIF + multi-select. AVI bytes are unit-tested in `tests/avi.selftest.ts`
-> (`pnpm test` runs it). **Next: confirm a real GIF animates on the badge.**
+> **STATUS (implemented, 2026-06-16):** GIF + slideshow + **video** → MJPG-AVI is
+> implemented in code and passes build + unit tests, but is **NOT yet confirmed on
+> hardware**. New files: `src/avi.ts` (verified-reference AVI muxer),
+> `src/media-frames.ts` (frame decode: WebCodecs `ImageDecoder` for GIF,
+> `HTMLVideoElement` seek for video — both zero-dep, Chrome/Edge). `src/e87-client.ts`
+> generalized to `uploadFile(bytes, {mode})` with `uploadJpeg`/`uploadAnimation`
+> wrappers; `src/image.ts` gained `fileToBadgeAnimation` / `filesToBadgeAnimation` /
+> `videoToBadgeAnimation`; the UI accepts GIF + video + multi-select. AVI bytes are
+> unit-tested in `tests/avi.selftest.ts` (`pnpm test` runs it). **Next: confirm a
+> real GIF/video animates on the badge.**
 
 ## What already works (don't re-derive)
 
@@ -102,10 +104,16 @@ Repo `jumpingmushroom/e87_badge` `docs/protocol.md` — wire-level cross-check.
   testing without a dev server; regenerate it if you want, or just use `pnpm dev`.
 
 ## Remaining for animation
-- **Hardware confirm**: send a small GIF and a 2–3 image slideshow; confirm they
-  animate on the badge. The AVI container is unit-tested but the firmware's real
-  fps/frame-count/file-size limits are unverified (`TARGET_MAX_ANIMATION_BYTES`
-  in `src/image.ts` is a 500 KB heuristic — tune once hardware data exists).
+- **Hardware confirm**: send a small GIF, a 2–3 image slideshow, and a short video;
+  confirm they animate on the badge. The AVI container is unit-tested but the
+  firmware's real fps/frame-count/file-size limits are unverified
+  (`TARGET_MAX_ANIMATION_BYTES` in `src/image.ts` is a 500 KB heuristic — tune once
+  hardware data exists).
+- **Video** is sampled via `videoToFrames` (`src/media-frames.ts`): off-DOM
+  `HTMLVideoElement` seek-and-draw, default 10 fps · first 12 s · ≤120 frames
+  (all overridable via opts). No node unit test — HTMLVideoElement is browser-only;
+  verify with `pnpm dev`. Codec support is the browser's (Chrome/Edge: H.264 mp4,
+  VP8/9 webm; HEVC/AV1 may not decode).
 - Variable GIF delays are reconciled to one fixed AVI fps via `fpsFromFrames`
   (average, clamped 1–30). If precise per-frame timing matters, resample
   (duplicate frames into fixed-rate slots) — see the note in `src/media-frames.ts`.

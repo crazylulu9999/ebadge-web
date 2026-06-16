@@ -67,6 +67,15 @@ const DEFAULT_FRAME_MS = 100
 /** Hard ceiling so a pathological GIF cannot exhaust memory. */
 const ABSOLUTE_MAX_FRAMES = 600
 
+// Video sampling defaults (see videoToFrames).
+const VIDEO_DEFAULT_FPS = 10
+const VIDEO_DEFAULT_MAX_SECONDS = 12
+const VIDEO_DEFAULT_MAX_FRAMES = 120
+/** Per-seek guard: resolve and draw the current frame rather than hang. */
+const VIDEO_SEEK_TIMEOUT_MS = 5000
+/** Metadata/data-ready guard: reject so a never-loading source can't hang. */
+const VIDEO_LOAD_TIMEOUT_MS = 15000
+
 // ── Canvas helpers ───────────────────────────────────────────
 
 function makeBadgeCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -210,4 +219,120 @@ export function fpsFromFrames(frames: BadgeFrame[], min = 1, max = 30): number {
   const avgMs = totalMs / frames.length
   const fps = avgMs > 0 ? 1000 / avgMs : max
   return Math.max(min, Math.min(max, Math.round(fps)))
+}
+
+// ── Video → frames (HTMLVideoElement seek) ───────────────────
+
+/** Seek `video` to `t` (seconds) and resolve once that frame is decoded. */
+function seekTo(video: HTMLVideoElement, t: number): Promise<void> {
+  // A decode error already latched on the element: fail fast, don't seek into it.
+  if (video.error) return Promise.reject(new Error('동영상 디코딩 중 오류가 발생했습니다.'))
+  return new Promise<void>((resolve, reject) => {
+    let done = false
+    const finish = (err?: Error) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      video.removeEventListener('seeked', onSeeked)
+      video.removeEventListener('error', onErr)
+      if (err) reject(err)
+      else resolve()
+    }
+    const onSeeked = () => finish()
+    // A mid-stream decode error must abort the whole job, not stall 5s per frame.
+    const onErr = () => finish(new Error('동영상 디코딩 중 오류가 발생했습니다.'))
+    // On timeout, draw whatever frame is current rather than hang the whole job.
+    const timer = setTimeout(() => finish(), VIDEO_SEEK_TIMEOUT_MS)
+    video.addEventListener('seeked', onSeeked, { once: true })
+    video.addEventListener('error', onErr, { once: true })
+    // If we're already at (≈) t, some browsers won't fire 'seeked'; nudge below one sample.
+    video.currentTime = Math.abs(video.currentTime - t) < 1e-3 ? t + 1e-3 : t
+  })
+}
+
+/**
+ * Sample a video into ordered 368×368 frames by seeking an off-DOM <video> and
+ * drawing each decoded frame to a canvas. Zero dependencies — HTMLVideoElement +
+ * canvas only (no WebCodecs, no demuxer). Codec support is the browser's;
+ * unsupported sources throw a clear error.
+ *
+ * @param file            the video File (mp4/webm/ogg/mov/…)
+ * @param opts.targetFps  frames sampled per real-time second (default 10)
+ * @param opts.maxSeconds cap on real-time seconds sampled (default 12)
+ * @param opts.maxFrames  hard cap on frame count (default 120)
+ */
+export async function videoToFrames(
+  file: File,
+  opts?: { targetFps?: number; maxFrames?: number; maxSeconds?: number },
+): Promise<BadgeFrame[]> {
+  const targetFps = Math.max(1, Math.min(opts?.targetFps ?? VIDEO_DEFAULT_FPS, 30))
+  const maxSeconds = Math.max(0.1, opts?.maxSeconds ?? VIDEO_DEFAULT_MAX_SECONDS)
+  const maxFrames = Math.max(1, Math.min(opts?.maxFrames ?? VIDEO_DEFAULT_MAX_FRAMES, ABSOLUTE_MAX_FRAMES))
+
+  const url = URL.createObjectURL(file)
+  const video = document.createElement('video')
+  video.muted = true
+  video.playsInline = true
+  video.preload = 'auto'
+
+  try {
+    // Wait for the first decoded frame (loadeddata), or surface an error/timeout.
+    await new Promise<void>((resolve, reject) => {
+      let done = false
+      const finish = (err?: Error) => {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        video.removeEventListener('loadeddata', onData)
+        video.removeEventListener('error', onErr)
+        if (err) reject(err)
+        else resolve()
+      }
+      const onData = () => finish()
+      const onErr = () =>
+        finish(new Error('동영상을 디코딩할 수 없습니다 (지원하지 않는 코덱/형식일 수 있어요).'))
+      const timer = setTimeout(
+        () => finish(new Error('동영상 로딩이 시간 내에 완료되지 않았습니다.')),
+        VIDEO_LOAD_TIMEOUT_MS,
+      )
+      video.addEventListener('loadeddata', onData, { once: true })
+      video.addEventListener('error', onErr, { once: true })
+      video.src = url
+      video.load()
+    })
+
+    if (!video.videoWidth || !video.videoHeight) {
+      throw new Error('동영상 해상도를 읽을 수 없습니다.')
+    }
+    const duration = video.duration
+    const haveDuration = Number.isFinite(duration) && duration > 0
+    const effective = haveDuration ? Math.min(duration, maxSeconds) : 0
+    const frameCount = haveDuration
+      ? Math.max(1, Math.min(Math.round(effective * targetFps), maxFrames))
+      : 1
+    const durationMs = Math.round(1000 / targetFps)
+    // Stay just inside the end so the final seek reliably fires 'seeked'. Scale the
+    // margin to the sample interval so it never collapses two consecutive samples.
+    const lastSafe = haveDuration ? Math.max(0, duration - Math.min(0.05, 0.5 / targetFps)) : 0
+
+    const frames: BadgeFrame[] = []
+    for (let i = 0; i < frameCount; i++) {
+      await seekTo(video, haveDuration ? Math.min(i / targetFps, lastSafe) : 0)
+      const { canvas, ctx } = makeBadgeCanvas()
+      drawCenterCropped(ctx, video, video.videoWidth, video.videoHeight)
+      frames.push({ canvas, durationMs })
+    }
+
+    if (frames.length === 0) throw new Error('동영상에서 프레임을 추출하지 못했습니다.')
+    return frames
+  } finally {
+    try {
+      video.pause()
+    } catch {
+      /* ignore */
+    }
+    video.removeAttribute('src')
+    video.load() // detach the decoder from the (now-revoked) URL
+    URL.revokeObjectURL(url)
+  }
 }

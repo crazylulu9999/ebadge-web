@@ -46,6 +46,7 @@ subpath without hardcoding the repo name.
 3. Choose content (auto center-cropped to 368×368):
    - **One image** → still JPEG.
    - **One GIF** → animation (decoded to frames, muxed into an MJPG AVI).
+   - **One video** → animation (first ~12 s sampled at 10 fps → MJPG AVI).
    - **Multiple images** → slideshow AVI.
 4. Click **배지로 전송**. Watch the log; a still image takes ~5–15 s, an
    animation longer in proportion to its size.
@@ -65,12 +66,14 @@ subpath without hardcoding the repo name.
 - Image upload is implemented and the auth cipher is verified against the captured
   test vector. **Not yet tested end-to-end against hardware from this port** — test
   on your badge and check the log if anything stalls.
-- GIF / slideshow animation is implemented: the same upload path carries an MJPG
+- GIF / slideshow / video animation is implemented: the same upload path carries an MJPG
   AVI (built by `src/avi.ts`, a byte-for-byte port of the hardware-verified
   reference container), and only the completion path extension changes (`.avi`
   vs `.jpg`). The AVI container structure is unit-tested (`tests/avi.selftest.ts`),
   but **animation has not been confirmed on hardware yet** — verify on your badge.
-  GIF decoding uses WebCodecs `ImageDecoder` (Chrome / Edge only).
+  GIF decoding uses WebCodecs `ImageDecoder`; video sampling uses an
+  `HTMLVideoElement` seek (no extra deps). Both are Chrome / Edge only, and video
+  codec support is whatever the browser provides.
 - The completion handshake (phase 10) sends a generated UTF-16LE path; the file is
   typically already stored before this. Completion errors are logged, not fatal.
 - Text rendering and danmaku remain out of scope — the reference repos have that

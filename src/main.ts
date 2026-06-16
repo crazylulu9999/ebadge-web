@@ -3,6 +3,7 @@ import {
   fileToBadgeJpeg,
   fileToBadgeAnimation,
   filesToBadgeAnimation,
+  videoToBadgeAnimation,
   type EncodedImage,
   type EncodedAnimation,
 } from './image'
@@ -116,9 +117,17 @@ fileInput.addEventListener('change', async () => {
   imgMeta.textContent = '인코딩 중…'
   refreshUploadBtn()
 
-  // Detect GIF by MIME *or* extension — some browsers report a blank type for .gif.
+  // Detect GIF / video by MIME *or* extension — some browsers report a blank type.
   const looksGif = (f: File) => /gif/i.test(f.type) || /\.gif$/i.test(f.name)
+  // .ogv = Ogg video; plain .ogg is conventionally audio, so rely on the video/ MIME test for it.
+  const looksVideo = (f: File) => /^video\//i.test(f.type) || /\.(mp4|webm|ogv|mov|m4v)$/i.test(f.name)
   const isGif = files.length === 1 && looksGif(files[0])
+  const isVideo = files.length === 1 && looksVideo(files[0])
+  if (files.length > 1 && files.some(looksVideo)) {
+    imgMeta.textContent = '동영상은 한 번에 한 개만 선택하세요.'
+    log('warn', '동영상은 여러 파일과 함께 선택할 수 없습니다. 동영상 1개만 선택하세요.')
+    return
+  }
   if (files.length > 1 && files.some(looksGif)) {
     log('warn', 'GIF는 여러 장 선택 시 각 GIF의 첫 프레임만 슬라이드쇼로 사용됩니다. 애니메이션 재생은 GIF 1장만 선택하세요.')
   }
@@ -129,6 +138,11 @@ fileInput.addEventListener('change', async () => {
       const anim = await fileToBadgeAnimation(files[0])
       prepared = { kind: 'animation', data: anim }
       showAnimation(anim, 'GIF')
+    } else if (isVideo) {
+      log('info', `sampling video ${files[0].name}…`)
+      const anim = await videoToBadgeAnimation(files[0])
+      prepared = { kind: 'animation', data: anim }
+      showAnimation(anim, '동영상')
     } else if (files.length > 1) {
       log('info', `building slideshow from ${files.length} images…`)
       const anim = await filesToBadgeAnimation(files)
