@@ -23,7 +23,7 @@ enabled (`corepack enable`), the pinned version is used automatically.
 
 ```bash
 pnpm install
-pnpm dev         # http://localhost:5173
+pnpm dev         # http://localhost:3000
 pnpm build       # static output in dist/
 pnpm test        # verify auth cipher against captured vector (tsx tests/auth.test.ts)
 ```
@@ -43,8 +43,12 @@ subpath without hardcoding the repo name.
 
 1. Single-press the badge's Bluetooth button so it advertises as `E87`.
 2. Open the page, click **배지 연결**, pick the badge in the chooser.
-3. Choose an image (auto center-cropped to 368×368 and JPEG-encoded).
-4. Click **배지로 전송**. Watch the log; an upload takes ~5–15 s.
+3. Choose content (auto center-cropped to 368×368):
+   - **One image** → still JPEG.
+   - **One GIF** → animation (decoded to frames, muxed into an MJPG AVI).
+   - **Multiple images** → slideshow AVI.
+4. Click **배지로 전송**. Watch the log; a still image takes ~5–15 s, an
+   animation longer in proportion to its size.
 
 ## How it works
 
@@ -61,10 +65,16 @@ subpath without hardcoding the repo name.
 - Image upload is implemented and the auth cipher is verified against the captured
   test vector. **Not yet tested end-to-end against hardware from this port** — test
   on your badge and check the log if anything stalls.
-- The completion handshake (phase 10) sends a generated UTF-16LE path; the image is
+- GIF / slideshow animation is implemented: the same upload path carries an MJPG
+  AVI (built by `src/avi.ts`, a byte-for-byte port of the hardware-verified
+  reference container), and only the completion path extension changes (`.avi`
+  vs `.jpg`). The AVI container structure is unit-tested (`tests/avi.selftest.ts`),
+  but **animation has not been confirmed on hardware yet** — verify on your badge.
+  GIF decoding uses WebCodecs `ImageDecoder` (Chrome / Edge only).
+- The completion handshake (phase 10) sends a generated UTF-16LE path; the file is
   typically already stored before this. Completion errors are logged, not fatal.
-- Text rendering, GIF/slideshow (AVI), and danmaku are out of scope for v1 — the
-  reference repos have that code if you want to extend.
+- Text rendering and danmaku remain out of scope — the reference repos have that
+  code if you want to extend.
 
 ## Credits
 
