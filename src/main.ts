@@ -47,6 +47,9 @@ type Prepared =
   | { kind: 'image'; data: EncodedImage }
   | { kind: 'animation'; data: EncodedAnimation }
 let prepared: Prepared | null = null
+// Bumped on every new selection; an in-flight encode whose id is stale on resolve
+// discards its result (revokes its URLs) instead of clobbering a newer selection.
+let selectionGen = 0
 
 function setConnected(on: boolean): void {
   dot.classList.toggle('on', on)
@@ -58,6 +61,52 @@ function setConnected(on: boolean): void {
 
 function refreshUploadBtn(): void {
   uploadBtn.disabled = !(client.connected && prepared)
+}
+
+// ── preview (animated for GIF / video / slideshow) ───────────
+
+let previewTimer: number | undefined
+
+function stopPreview(): void {
+  if (previewTimer !== undefined) {
+    clearTimeout(previewTimer)
+    previewTimer = undefined
+  }
+}
+
+/** Cycle the <img> preview through the frame URLs at `fps` — shows exactly what
+ *  the badge will display (cropped, 368×368, sampled fps, JPEG quality). */
+function playPreview(frameUrls: string[], fps: number): void {
+  stopPreview()
+  if (frameUrls.length === 0) return
+  if (frameUrls.length === 1) {
+    preview.src = frameUrls[0]
+    return
+  }
+  const delay = Math.max(1, Math.round(1000 / fps))
+  let i = 0
+  const tick = () => {
+    preview.src = frameUrls[i]
+    i = (i + 1) % frameUrls.length
+    previewTimer = window.setTimeout(tick, delay)
+  }
+  tick()
+}
+
+/** Revoke every object URL a prepared selection owns. */
+function revokePrepared(p: Prepared): void {
+  if (p.kind === 'animation') {
+    for (const u of p.data.frameUrls) URL.revokeObjectURL(u)
+  } else {
+    URL.revokeObjectURL(p.data.previewUrl)
+  }
+}
+
+/** Stop any preview animation and release the current selection's object URLs. */
+function clearPrepared(): void {
+  stopPreview()
+  if (prepared) revokePrepared(prepared)
+  prepared = null
 }
 
 function showImage(img: EncodedImage): void {
@@ -72,7 +121,7 @@ function showImage(img: EncodedImage): void {
 }
 
 function showAnimation(anim: EncodedAnimation, label: string): void {
-  preview.src = anim.previewUrl
+  playPreview(anim.frameUrls, anim.fps)
   const kb = (anim.sizeBytes / 1024).toFixed(1)
   const qPct = Math.round(anim.quality * 100)
   imgMeta.innerHTML = `<b>368×368</b> ${label} · <b>${anim.frameCount} 프레임</b> · ${anim.fps}fps · <b>${kb} KB</b> · 품질 ${qPct}%`
@@ -109,10 +158,10 @@ fileInput.addEventListener('change', async () => {
   const files = Array.from(fileInput.files ?? [])
   if (files.length === 0) return
 
-  // Drop the previous selection (free its preview URL) and clear the visible
-  // preview so a failed / non-image pick can't leave stale UI behind.
-  if (prepared) URL.revokeObjectURL(prepared.data.previewUrl)
-  prepared = null
+  // Drop the previous selection (stop its preview loop, free all its object URLs)
+  // and clear the visible preview so a failed / non-image pick leaves no stale UI.
+  clearPrepared()
+  const myGen = ++selectionGen // any earlier in-flight encode is now stale
   preview.removeAttribute('src')
   imgMeta.textContent = '인코딩 중…'
   refreshUploadBtn()
@@ -132,30 +181,47 @@ fileInput.addEventListener('change', async () => {
     log('warn', 'GIF는 여러 장 선택 시 각 GIF의 첫 프레임만 슬라이드쇼로 사용됩니다. 애니메이션 재생은 GIF 1장만 선택하세요.')
   }
 
+  // A newer selection started while this one was encoding: discard this result
+  // (freeing its object URLs) instead of clobbering the newer selection's UI/state.
+  const stale = (result: Prepared): boolean => {
+    if (myGen === selectionGen) return false
+    revokePrepared(result)
+    return true
+  }
+
   try {
     if (isGif) {
       log('info', `decoding GIF ${files[0].name}…`)
       const anim = await fileToBadgeAnimation(files[0])
-      prepared = { kind: 'animation', data: anim }
+      const result: Prepared = { kind: 'animation', data: anim }
+      if (stale(result)) return
+      prepared = result
       showAnimation(anim, 'GIF')
     } else if (isVideo) {
       log('info', `sampling video ${files[0].name}…`)
       const anim = await videoToBadgeAnimation(files[0])
-      prepared = { kind: 'animation', data: anim }
+      const result: Prepared = { kind: 'animation', data: anim }
+      if (stale(result)) return
+      prepared = result
       showAnimation(anim, '동영상')
     } else if (files.length > 1) {
       log('info', `building slideshow from ${files.length} images…`)
       const anim = await filesToBadgeAnimation(files)
-      prepared = { kind: 'animation', data: anim }
+      const result: Prepared = { kind: 'animation', data: anim }
+      if (stale(result)) return
+      prepared = result
       showAnimation(anim, '슬라이드쇼')
     } else {
       log('info', `encoding ${files[0].name}…`)
       const img = await fileToBadgeJpeg(files[0])
-      prepared = { kind: 'image', data: img }
+      const result: Prepared = { kind: 'image', data: img }
+      if (stale(result)) return
+      prepared = result
       showImage(img)
     }
     refreshUploadBtn()
   } catch (e) {
+    if (myGen !== selectionGen) return // a newer selection owns the UI now
     imgMeta.textContent = '파일을 읽지 못했습니다.'
     log('err', (e as Error).message)
   }
