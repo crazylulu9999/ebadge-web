@@ -94,7 +94,11 @@
       #preview:not([src]) { display: none; }
       .meta { font-size: 13px; color: var(--muted); }
       .meta b { color: var(--fg); font-weight: 600; }
-      input[type=file] { font: inherit; color: var(--muted); }
+      /* max-width is load-bearing below ~360px: Chrome gives a file input an
+         intrinsic width near 300px ("파일 선택" + "선택된 파일 없음"), which no
+         amount of min-width:0 on its ancestors can shrink, so the panel — and
+         with it the page — scrolled sideways on a small phone. Measured. */
+      input[type=file] { font: inherit; color: var(--muted); max-width: 100%; }
       progress { width: 100%; height: 10px; }
       .logHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
       .logHeader button { padding: 4px 10px; font-size: 12px; }
@@ -102,6 +106,9 @@
         font-family: var(--mono); font-size: 12px;
         background: var(--sunken); border: 1px solid var(--border); border-radius: 8px;
         padding: 12px; height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+        /* Resizable rather than auto-height: a growing box would shift the page during
+           a multi-minute transfer and defeat the scroll-to-bottom in log(). */
+        resize: vertical;
       }
       .log-info { color: var(--muted); }
       .log-tx { color: var(--link); }
@@ -133,6 +140,30 @@
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
       }
       .hidden { display: none; }
+
+      /* Touch: 44px is the WCAG 2.5.8 / platform minimum, and the subtitle promises
+         Android Chrome. Scoped to coarse pointers so desktop keeps its compact
+         ~42px buttons — a narrow desktop window is not a touch-target problem. */
+      @media (pointer: coarse) {
+        button { min-height: 44px; padding: 10px 16px; }
+        .logHeader button { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+        input[type=file] { min-height: 44px; }
+      }
+
+      /* Phone: the 184px circle no longer fits beside its text, .status's auto margin
+         lands it awkwardly once .row wraps, and the fixed 240px log eats the viewport. */
+      @media (max-width: 560px) {
+        .wrap { padding: 20px 14px 56px; }
+        h1 { font-size: 18px; }
+        .panel { padding: 14px; }
+        .previewArea { gap: 12px; }
+        .preview-circle { width: 140px; height: 140px; margin: 0 auto; }
+        .status { margin-left: 0; width: 100%; }
+        /* Direct children only — the copy/지우기 pair lives under .logHeader > .row
+           and must stay compact. */
+        .panel > .row > button { flex: 1 1 auto; }
+        #log { height: 40vh; min-height: 140px; }
+      }
     </style>
   </head>
   <body>
