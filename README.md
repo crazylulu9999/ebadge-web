@@ -56,6 +56,9 @@ subpath without hardcoding the repo name.
    - **Multiple images** → slideshow AVI.
 4. Click **배지로 전송**. Watch the log; a still image takes ~5–15 s, an
    animation longer in proportion to its size.
+5. Click **연결 해제**. The badge applies uploaded content only once the BLE link
+   drops — by design, not a bug. Until you disconnect it stays on its Bluetooth
+   screen and looks unchanged, so a successful upload can read as a failure.
 
 ## How it works
 

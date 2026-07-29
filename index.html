@@ -16,6 +16,11 @@
         --accent-dim: #238636;
         --warn: #d29922;
         --err: #f85149;
+        /* Banner fills/edges, one pair per severity. Tokenized rather than inlined
+           because the ok/warn/err triad only reads as a set when it's declared as one. */
+        --warn-bg: #2d2410; --warn-line: #5c4a12;
+        --err-bg: #2d1113;  --err-line: #5c1f21;
+        --ok-bg: #0f2417;   --ok-line: #1f5c31;
         --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
       }
       * { box-sizing: border-box; }
@@ -80,9 +85,29 @@
       .log-rx { color: var(--accent); }
       .log-warn { color: var(--warn); }
       .log-err { color: var(--err); }
+      /* Geometry only — every banner picks its palette via .warn / .ok / .err, so the
+         runtime notices and the static #unsupported stay one component. */
       .banner {
-        background: #2d2410; border: 1px solid #5c4a12; color: var(--warn);
-        border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+        border: 1px solid; border-radius: 8px;
+        padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+      }
+      .banner.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+      .banner.err  { background: var(--err-bg);  border-color: var(--err-line);  color: var(--err); }
+      .banner.ok   { background: var(--ok-bg);   border-color: var(--ok-line);   color: var(--accent); }
+      /* Notices sit below their panel's content, so the margin flips. */
+      .panel > .banner { margin: 12px 0 0; }
+      /* Standing guidance, distinct from the notices: never removed, never coloured. */
+      .hint { margin: 12px 0 0; }
+      .previewInfo { min-width: 0; }
+      .previewInfo p { margin: 8px 0 0; }
+      /* Nothing selected yet (or cleared): don't reserve a blank line. */
+      #imgMeta:empty { display: none; }
+      /* Uploaded content only lands when the link drops, so a successful send is not
+         the last step — promote 연결 해제 until it has been used. Static ring, no
+         animation, so there's nothing for prefers-reduced-motion to suppress. */
+      button.attn:not(:disabled) {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
       }
       .hidden { display: none; }
     </style>
@@ -95,7 +120,7 @@
         Chrome / Edge (데스크탑 · 안드로이드)에서 동작. iOS Safari는 Web Bluetooth 미지원.
       </p>
 
-      <div id="unsupported" class="banner hidden">
+      <div id="unsupported" class="banner warn hidden" role="alert">
         ⚠️ 이 브라우저는 Web Bluetooth를 지원하지 않습니다. 데스크탑 Chrome/Edge 또는 안드로이드 Chrome을 사용하세요.
       </div>
 
@@ -105,20 +130,30 @@
           <button id="disconnectBtn" disabled>연결 해제</button>
           <div class="status"><span id="dot" class="dot"></span><span id="statusText">미연결</span></div>
         </div>
+        <!-- Hard precondition, previously only in an English log line: the badge does
+             not advertise until its Bluetooth button is pressed, so a missed press is
+             indistinguishable from a broken app. -->
+        <p class="meta hint">연결 전에 배지의 블루투스 버튼을 <b>한 번</b> 눌러 페어링 모드로 만들어 주세요.</p>
+        <div id="connNotice" class="banner hidden" role="status"></div>
       </div>
 
       <div class="panel">
         <div class="label">이미지</div>
         <div class="previewArea">
           <div class="preview-circle"><img id="preview" alt="" /></div>
-          <div>
+          <div class="previewInfo">
             <input type="file" id="fileInput" accept="image/*,video/*" multiple />
-            <p class="meta" id="imgMeta">
+            <!-- Standing usage guidance. Kept in its OWN node: #imgMeta below is
+                 overwritten on every selection, and used to destroy this text. -->
+            <p class="meta" id="imgHelp">
               이미지 1장 → 정지 이미지, GIF / 동영상 → 애니메이션, 여러 장 선택 → 슬라이드쇼.
               동영상은 처음 약 12초를 10fps로 샘플링합니다. 모두 368×368로 자동 크롭됩니다.
             </p>
+            <!-- Encoding state and result metadata only. Empty when nothing is selected. -->
+            <p class="meta" id="imgMeta" role="status"></p>
           </div>
         </div>
+        <div id="fileNotice" class="banner hidden" role="status"></div>
       </div>
 
       <div class="panel">
@@ -127,6 +162,10 @@
           <button id="stopBtn" disabled>중지</button>
         </div>
         <progress id="prog" value="0" max="100"></progress>
+        <!-- The single most-missed fact about this device (docs/HANDOFF-animation.md,
+             e87-client.ts): content is applied only once the BLE link drops. -->
+        <p class="meta hint">전송이 끝난 뒤 <b>연결 해제</b>를 눌러야 배지에 실제로 적용됩니다.</p>
+        <div id="sendNotice" class="banner hidden" role="alert"></div>
       </div>
 
       <div class="panel">
