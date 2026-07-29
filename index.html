@@ -16,6 +16,12 @@
         --accent-dim: #238636;
         --warn: #d29922;
         --err: #f85149;
+        --btn: #21262d;      /* default button fill */
+        --btn-line: #3d444d; /* button hover edge */
+        --sunken: #0b0e12;   /* insets: preview circle, log */
+        --dot-off: #555;
+        --link: #58a6ff;
+        --focus: var(--link);
         /* Banner fills/edges, one pair per severity. Tokenized rather than inlined
            because the ok/warn/err triad only reads as a set when it's declared as one. */
         --warn-bg: #2d2410; --warn-line: #5c4a12;
@@ -42,28 +48,45 @@
         padding: 18px;
         margin-bottom: 16px;
       }
-      .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+      /* display:block because the 이미지 caption is now a real <label for>, and a
+         label is inline by default — without this the margin-bottom is ignored. */
+      .label { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+      .label[for] { cursor: pointer; }
       button {
         font: inherit;
-        background: #21262d;
+        background: var(--btn);
         color: var(--fg);
         border: 1px solid var(--border);
         border-radius: 7px;
         padding: 8px 14px;
         cursor: pointer;
       }
-      button:hover:not(:disabled) { border-color: #3d444d; }
+      button:hover:not(:disabled) { border-color: var(--btn-line); }
       button:disabled { opacity: .45; cursor: not-allowed; }
       button.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
-      button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+      /* Hover brightens the fill to the brand green AND flips the label to page ink.
+         White on #3fb950 is 2.54:1 — it FAILED AA at the exact moment the pointer was
+         on the button. There is no fix that keeps white text: holding 4.5:1 against
+         white caps the fill's luminance at 0.1833 and the base #238636 is already at
+         0.1767, so no perceptibly brighter green is legal. Darkening instead would
+         read as "pressed", not "hover". Flipping the ink gives 7.45:1 and makes the
+         button read as more emphasised, using no new colour. Base stays 4.63:1. */
+      button.primary:hover:not(:disabled) {
+        background: var(--accent); border-color: var(--accent); color: var(--bg);
+      }
+      /* The UA default ring is near-invisible on this palette, and every button here
+         is fully restyled so nothing else signals focus. The offset matters: on the
+         green fill the ring would sit at 1.83:1, but pushed onto the panel behind it
+         it lands at 6.85:1. */
+      :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
       .status { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
-      .dot { width: 9px; height: 9px; border-radius: 50%; background: #555; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dot-off); }
       .dot.on { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
       .previewArea { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
       .preview-circle {
         width: 184px; height: 184px; border-radius: 50%; flex: none;
-        border: 1px solid var(--border); background: #0b0e12; overflow: hidden;
+        border: 1px solid var(--border); background: var(--sunken); overflow: hidden;
       }
       #preview { width: 100%; height: 100%; object-fit: cover; display: block; }
       /* No file chosen yet: hide the empty <img> (and its broken-image box) so
@@ -71,17 +94,24 @@
       #preview:not([src]) { display: none; }
       .meta { font-size: 13px; color: var(--muted); }
       .meta b { color: var(--fg); font-weight: 600; }
-      input[type=file] { font: inherit; color: var(--muted); }
+      /* max-width is load-bearing below ~360px: Chrome gives a file input an
+         intrinsic width near 300px ("파일 선택" + "선택된 파일 없음"), which no
+         amount of min-width:0 on its ancestors can shrink, so the panel — and
+         with it the page — scrolled sideways on a small phone. Measured. */
+      input[type=file] { font: inherit; color: var(--muted); max-width: 100%; }
       progress { width: 100%; height: 10px; }
       .logHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
       .logHeader button { padding: 4px 10px; font-size: 12px; }
       #log {
         font-family: var(--mono); font-size: 12px;
-        background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;
+        background: var(--sunken); border: 1px solid var(--border); border-radius: 8px;
         padding: 12px; height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+        /* Resizable rather than auto-height: a growing box would shift the page during
+           a multi-minute transfer and defeat the scroll-to-bottom in log(). */
+        resize: vertical;
       }
       .log-info { color: var(--muted); }
-      .log-tx { color: #58a6ff; }
+      .log-tx { color: var(--link); }
       .log-rx { color: var(--accent); }
       .log-warn { color: var(--warn); }
       .log-err { color: var(--err); }
@@ -110,10 +140,34 @@
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
       }
       .hidden { display: none; }
+
+      /* Touch: 44px is the WCAG 2.5.8 / platform minimum, and the subtitle promises
+         Android Chrome. Scoped to coarse pointers so desktop keeps its compact
+         ~42px buttons — a narrow desktop window is not a touch-target problem. */
+      @media (pointer: coarse) {
+        button { min-height: 44px; padding: 10px 16px; }
+        .logHeader button { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+        input[type=file] { min-height: 44px; }
+      }
+
+      /* Phone: the 184px circle no longer fits beside its text, .status's auto margin
+         lands it awkwardly once .row wraps, and the fixed 240px log eats the viewport. */
+      @media (max-width: 560px) {
+        .wrap { padding: 20px 14px 56px; }
+        h1 { font-size: 18px; }
+        .panel { padding: 14px; }
+        .previewArea { gap: 12px; }
+        .preview-circle { width: 140px; height: 140px; margin: 0 auto; }
+        .status { margin-left: 0; width: 100%; }
+        /* Direct children only — the copy/지우기 pair lives under .logHeader > .row
+           and must stay compact. */
+        .panel > .row > button { flex: 1 1 auto; }
+        #log { height: 40vh; min-height: 140px; }
+      }
     </style>
   </head>
   <body>
-    <div class="wrap">
+    <main class="wrap">
       <h1>E87 Badge — Web Bluetooth Uploader</h1>
       <p class="sub">
         JieLi AC697 기반 E87 / L8 배지에 이미지 전송 · <code>ZRun</code> 호환 프로토콜.
@@ -124,25 +178,36 @@
         ⚠️ 이 브라우저는 Web Bluetooth를 지원하지 않습니다. 데스크탑 Chrome/Edge 또는 안드로이드 Chrome을 사용하세요.
       </div>
 
-      <div class="panel">
+      <section class="panel" aria-label="배지 연결">
         <div class="row">
           <button id="connectBtn" class="primary">배지 연결</button>
           <button id="disconnectBtn" disabled>연결 해제</button>
-          <div class="status"><span id="dot" class="dot"></span><span id="statusText">미연결</span></div>
+          <div class="status">
+            <!-- Decorative: #statusText already carries the state as text, and an
+                 empty span would otherwise be announced as a nameless element. -->
+            <span id="dot" class="dot" aria-hidden="true"></span>
+            <!-- role="status" so an unexpected link drop is announced. -->
+            <span id="statusText" role="status">미연결</span>
+          </div>
         </div>
         <!-- Hard precondition, previously only in an English log line: the badge does
              not advertise until its Bluetooth button is pressed, so a missed press is
              indistinguishable from a broken app. -->
         <p class="meta hint">연결 전에 배지의 블루투스 버튼을 <b>한 번</b> 눌러 페어링 모드로 만들어 주세요.</p>
         <div id="connNotice" class="banner hidden" role="status"></div>
-      </div>
+      </section>
 
-      <div class="panel">
-        <div class="label">이미지</div>
+      <section class="panel" aria-label="이미지 선택">
+        <label class="label" for="fileInput">이미지</label>
         <div class="previewArea">
-          <div class="preview-circle"><img id="preview" alt="" /></div>
+          <!-- alt is meaningful, not decorative: this is the app's primary content.
+               Safe despite commit acf501e — #preview:not([src]) hides the element
+               entirely while empty, so no alt text or broken-image box can render. -->
+          <div class="preview-circle"><img id="preview" alt="배지에 표시될 이미지 미리보기" /></div>
           <div class="previewInfo">
-            <input type="file" id="fileInput" accept="image/*,video/*" multiple />
+            <!-- Name comes from the <label>; #imgHelp is the description. -->
+            <input type="file" id="fileInput" accept="image/*,video/*" multiple
+                   aria-describedby="imgHelp" />
             <!-- Standing usage guidance. Kept in its OWN node: #imgMeta below is
                  overwritten on every selection, and used to destroy this text. -->
             <p class="meta" id="imgHelp">
@@ -154,21 +219,21 @@
           </div>
         </div>
         <div id="fileNotice" class="banner hidden" role="status"></div>
-      </div>
+      </section>
 
-      <div class="panel">
+      <section class="panel" aria-label="전송">
         <div class="row" style="margin-bottom: 12px;">
           <button id="uploadBtn" class="primary" disabled>배지로 전송</button>
           <button id="stopBtn" disabled>중지</button>
         </div>
-        <progress id="prog" value="0" max="100"></progress>
+        <progress id="prog" value="0" max="100" aria-label="전송 진행률"></progress>
         <!-- The single most-missed fact about this device (docs/HANDOFF-animation.md,
              e87-client.ts): content is applied only once the BLE link drops. -->
         <p class="meta hint">전송이 끝난 뒤 <b>연결 해제</b>를 눌러야 배지에 실제로 적용됩니다.</p>
         <div id="sendNotice" class="banner hidden" role="alert"></div>
-      </div>
+      </section>
 
-      <div class="panel">
+      <section class="panel" aria-label="로그">
         <div class="logHeader">
           <span class="label" style="margin-bottom: 0;">로그</span>
           <div class="row" style="gap: 6px;">
@@ -176,9 +241,17 @@
             <button id="clearLogBtn" type="button">지우기</button>
           </div>
         </div>
-        <div id="log"></div>
-      </div>
-    </div>
+        <!-- aria-live="off" is deliberate and must not be "fixed": role="log" carries
+             an implicit polite live region, and this log emits a line per BLE frame —
+             a single animation upload produces thousands. Announcing that is a far
+             worse regression than the gap it closes. The role + label + tabindex make
+             it a named, keyboard-scrollable region readable on demand; the three
+             banner slots carry the announcements instead.
+             lang="en" so a screen reader voices the trace in English inside a ko page. -->
+        <div id="log" role="log" aria-live="off" aria-label="통신 로그"
+             lang="en" tabindex="0"></div>
+      </section>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
