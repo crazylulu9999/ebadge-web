@@ -251,6 +251,9 @@ fileInput.addEventListener('change', async () => {
   clearNotice(fileNotice)
   clearNotice(sendNotice) // a stale "전송 완료" beside fresh content is a lie
   setPendingApply(false)
+  // …and so is a full bar. It holds the last upload's 100% until the next one
+  // starts, so a fresh selection would sit beside a bar claiming it was sent.
+  prog.value = 0
   refreshUploadBtn()
 
   // Detect GIF / video by MIME *or* extension — some browsers report a blank type.
