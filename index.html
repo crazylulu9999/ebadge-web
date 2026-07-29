@@ -61,7 +61,21 @@
       button:hover:not(:disabled) { border-color: var(--btn-line); }
       button:disabled { opacity: .45; cursor: not-allowed; }
       button.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
-      button.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+      /* Hover brightens the fill to the brand green AND flips the label to page ink.
+         White on #3fb950 is 2.54:1 — it FAILED AA at the exact moment the pointer was
+         on the button. There is no fix that keeps white text: holding 4.5:1 against
+         white caps the fill's luminance at 0.1833 and the base #238636 is already at
+         0.1767, so no perceptibly brighter green is legal. Darkening instead would
+         read as "pressed", not "hover". Flipping the ink gives 7.45:1 and makes the
+         button read as more emphasised, using no new colour. Base stays 4.63:1. */
+      button.primary:hover:not(:disabled) {
+        background: var(--accent); border-color: var(--accent); color: var(--bg);
+      }
+      /* The UA default ring is near-invisible on this palette, and every button here
+         is fully restyled so nothing else signals focus. The offset matters: on the
+         green fill the ring would sit at 1.83:1, but pushed onto the panel behind it
+         it lands at 6.85:1. */
+      :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
       .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
       .status { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
       .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dot-off); }
