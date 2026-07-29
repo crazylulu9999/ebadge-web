@@ -48,7 +48,10 @@
         padding: 18px;
         margin-bottom: 16px;
       }
-      .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+      /* display:block because the 이미지 caption is now a real <label for>, and a
+         label is inline by default — without this the margin-bottom is ignored. */
+      .label { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+      .label[for] { cursor: pointer; }
       button {
         font: inherit;
         background: var(--btn);
@@ -133,7 +136,7 @@
     </style>
   </head>
   <body>
-    <div class="wrap">
+    <main class="wrap">
       <h1>E87 Badge — Web Bluetooth Uploader</h1>
       <p class="sub">
         JieLi AC697 기반 E87 / L8 배지에 이미지 전송 · <code>ZRun</code> 호환 프로토콜.
@@ -144,25 +147,36 @@
         ⚠️ 이 브라우저는 Web Bluetooth를 지원하지 않습니다. 데스크탑 Chrome/Edge 또는 안드로이드 Chrome을 사용하세요.
       </div>
 
-      <div class="panel">
+      <section class="panel" aria-label="배지 연결">
         <div class="row">
           <button id="connectBtn" class="primary">배지 연결</button>
           <button id="disconnectBtn" disabled>연결 해제</button>
-          <div class="status"><span id="dot" class="dot"></span><span id="statusText">미연결</span></div>
+          <div class="status">
+            <!-- Decorative: #statusText already carries the state as text, and an
+                 empty span would otherwise be announced as a nameless element. -->
+            <span id="dot" class="dot" aria-hidden="true"></span>
+            <!-- role="status" so an unexpected link drop is announced. -->
+            <span id="statusText" role="status">미연결</span>
+          </div>
         </div>
         <!-- Hard precondition, previously only in an English log line: the badge does
              not advertise until its Bluetooth button is pressed, so a missed press is
              indistinguishable from a broken app. -->
         <p class="meta hint">연결 전에 배지의 블루투스 버튼을 <b>한 번</b> 눌러 페어링 모드로 만들어 주세요.</p>
         <div id="connNotice" class="banner hidden" role="status"></div>
-      </div>
+      </section>
 
-      <div class="panel">
-        <div class="label">이미지</div>
+      <section class="panel" aria-label="이미지 선택">
+        <label class="label" for="fileInput">이미지</label>
         <div class="previewArea">
-          <div class="preview-circle"><img id="preview" alt="" /></div>
+          <!-- alt is meaningful, not decorative: this is the app's primary content.
+               Safe despite commit acf501e — #preview:not([src]) hides the element
+               entirely while empty, so no alt text or broken-image box can render. -->
+          <div class="preview-circle"><img id="preview" alt="배지에 표시될 이미지 미리보기" /></div>
           <div class="previewInfo">
-            <input type="file" id="fileInput" accept="image/*,video/*" multiple />
+            <!-- Name comes from the <label>; #imgHelp is the description. -->
+            <input type="file" id="fileInput" accept="image/*,video/*" multiple
+                   aria-describedby="imgHelp" />
             <!-- Standing usage guidance. Kept in its OWN node: #imgMeta below is
                  overwritten on every selection, and used to destroy this text. -->
             <p class="meta" id="imgHelp">
@@ -174,21 +188,21 @@
           </div>
         </div>
         <div id="fileNotice" class="banner hidden" role="status"></div>
-      </div>
+      </section>
 
-      <div class="panel">
+      <section class="panel" aria-label="전송">
         <div class="row" style="margin-bottom: 12px;">
           <button id="uploadBtn" class="primary" disabled>배지로 전송</button>
           <button id="stopBtn" disabled>중지</button>
         </div>
-        <progress id="prog" value="0" max="100"></progress>
+        <progress id="prog" value="0" max="100" aria-label="전송 진행률"></progress>
         <!-- The single most-missed fact about this device (docs/HANDOFF-animation.md,
              e87-client.ts): content is applied only once the BLE link drops. -->
         <p class="meta hint">전송이 끝난 뒤 <b>연결 해제</b>를 눌러야 배지에 실제로 적용됩니다.</p>
         <div id="sendNotice" class="banner hidden" role="alert"></div>
-      </div>
+      </section>
 
-      <div class="panel">
+      <section class="panel" aria-label="로그">
         <div class="logHeader">
           <span class="label" style="margin-bottom: 0;">로그</span>
           <div class="row" style="gap: 6px;">
@@ -196,9 +210,17 @@
             <button id="clearLogBtn" type="button">지우기</button>
           </div>
         </div>
-        <div id="log"></div>
-      </div>
-    </div>
+        <!-- aria-live="off" is deliberate and must not be "fixed": role="log" carries
+             an implicit polite live region, and this log emits a line per BLE frame —
+             a single animation upload produces thousands. Announcing that is a far
+             worse regression than the gap it closes. The role + label + tabindex make
+             it a named, keyboard-scrollable region readable on demand; the three
+             banner slots carry the announcements instead.
+             lang="en" so a screen reader voices the trace in English inside a ko page. -->
+        <div id="log" role="log" aria-live="off" aria-label="통신 로그"
+             lang="en" tabindex="0"></div>
+      </section>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
