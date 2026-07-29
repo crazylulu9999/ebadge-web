@@ -100,8 +100,9 @@ Repo `jumpingmushroom/e87_badge` `docs/protocol.md` — wire-level cross-check.
   `BufferSource` when calling `writeValueWithoutResponse`.
 - The cmd 0x20 completion has a tight (~100ms) device timeout → we auto-respond
   in the notification handler, not the polled loop. Keep that for animation too.
-- Single-file build (`e87-badge.html`) was produced via esbuild for quick local
-  testing without a dev server; regenerate it if you want, or just use `pnpm dev`.
+- The old single-file esbuild build (`e87-badge.html`) has been **removed** — it
+  predated animation and was referenced by nothing in the build. Use `pnpm dev`
+  or the Pages deploy; recover it from git (`edc1e63`) if you ever want it back.
 
 ## Remaining for animation
 - **Hardware confirm**: send a small GIF, a 2–3 image slideshow, and a short video;
@@ -117,9 +118,8 @@ Repo `jumpingmushroom/e87_badge` `docs/protocol.md` — wire-level cross-check.
 - Variable GIF delays are reconciled to one fixed AVI fps via `fpsFromFrames`
   (average, clamped 1–30). If precise per-frame timing matters, resample
   (duplicate frames into fixed-rate slots) — see the note in `src/media-frames.ts`.
-- `e87-badge.html` (standalone single-file build) is now **stale** — it predates
-  animation. Regenerate from `src/` if you still want a no-dev-server build, or
-  drop it in favor of `pnpm dev` / the Pages deploy.
+- ✅ `e87-badge.html` (stale standalone build, predating animation) was removed —
+  see the note above.
 
 ## Open items unrelated to animation
 - Confirm consecutive multi-send on one connection works on hardware.

@@ -10,6 +10,11 @@ The badge is a **JieLi AC697** SoC speaking JieLi RCSP. The full upload protocol
 and [jumpingmushroom/e87_badge](https://github.com/jumpingmushroom/e87_badge)
 (both MIT). This project is a clean TypeScript port of the image-upload path.
 
+**▶ Live demo: <https://crazylulu9999.github.io/ebadge-web/>**
+Chrome / Edge on desktop or Android. Without a badge in range you can still pick
+files, watch them encode, and preview exactly what would be sent — only the
+upload itself needs hardware.
+
 ## Browser support
 
 Web Bluetooth only. Works in **Chrome / Edge on desktop and Android**. **iOS Safari
@@ -34,7 +39,8 @@ pnpm test        # verify auth cipher against captured vector (tsx tests/auth.te
 2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 3. The included workflow (`.github/workflows/deploy.yml`) builds on every push to
    `main` and publishes `dist/`. Your app lands at
-   `https://<user>.github.io/ebadge-web/`.
+   `https://<user>.github.io/ebadge-web/` — this repo's is
+   <https://crazylulu9999.github.io/ebadge-web/>.
 
 `vite.config.ts` uses `base: './'` (relative paths) so it works under the repo
 subpath without hardcoding the repo name.
