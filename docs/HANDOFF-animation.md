@@ -104,12 +104,38 @@ Repo `jumpingmushroom/e87_badge` `docs/protocol.md` — wire-level cross-check.
   predated animation and was referenced by nothing in the build. Use `pnpm dev`
   or the Pages deploy; recover it from git (`edc1e63`) if you ever want it back.
 
+## Hardware results (2026-07-30)
+
+✅ **The animation path works.** A 3-image slideshow played on the badge, which
+clears the whole `.avi` chain at once: `buildMjpgAvi`'s container, the `.avi`
+extension in `buildFilePathResponse`, and low frame rates (2 fps).
+
+**The failure was size, and it is silent.** Oversized animations upload with a
+clean protocol trace — meta acked, every window acked, `0x20`/`0x1c` handshake
+complete, `✅ upload complete` — and then the badge displays nothing.
+
+| frames | bytes | plays |
+|---|---|---|
+| 3 | 82,154 | ✅ |
+| 40 | 448,664 | ✅ |
+| 49 | 557,574 | ✅ |
+| 120 | 890,792 | ❌ |
+| 120 | 1,723,312 | ❌ |
+
+Quality is NOT a factor — the 449 KB and 558 KB runs were both q22 and played
+fine. Measured transfer rate is ~6.5 KB/s, so 550 KB already costs ~85 s.
+
+`TARGET_MAX_ANIMATION_BYTES` is now **550000** and is **enforced**: `framesToAvi`
+probes a few frames, solves for (frames, quality) via `src/frame-budget.ts`, and
+refuses the job rather than shipping an oversized file. Slideshows never drop a
+frame (each is an image the user chose) — they refuse instead; GIF/video are
+thinned with `evenlySpacedIndices` and the fps recomputed.
+
 ## Remaining for animation
-- **Hardware confirm**: send a small GIF, a 2–3 image slideshow, and a short video;
-  confirm they animate on the badge. The AVI container is unit-tested but the
-  firmware's real fps/frame-count/file-size limits are unverified
-  (`TARGET_MAX_ANIMATION_BYTES` in `src/image.ts` is a 500 KB heuristic — tune once
-  hardware data exists).
+- **Narrow the ceiling**: the limit is somewhere in 558 KB–890 KB. Two captures
+  would settle it — ~60 images (~700 KB), and 100+ *simple* images (many frames,
+  few bytes) to separate a frame-count limit from a byte limit. `MAX_ANIMATION_FRAMES`
+  exists as a separate knob for exactly that and is currently a no-op at 120.
 - **Video** is sampled via `videoToFrames` (`src/media-frames.ts`): off-DOM
   `HTMLVideoElement` seek-and-draw, default 10 fps · first 12 s · ≤120 frames
   (all overridable via opts). No node unit test — HTMLVideoElement is browser-only;

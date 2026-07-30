@@ -186,16 +186,20 @@ function showAnimation(anim: EncodedAnimation, label: string): void {
   const kb = (anim.sizeBytes / 1024).toFixed(1)
   const qPct = Math.round(anim.quality * 100)
   imgMeta.innerHTML = `<b>368×368</b> ${label} · <b>${anim.frameCount} 프레임</b> · ${anim.fps}fps · <b>${kb} KB</b> · 품질 ${qPct}%`
-  log('info', `animation: ${anim.frameCount} frames @ ${anim.fps}fps, ${anim.sizeBytes} bytes (quality ${qPct}%)`)
-  if (anim.overBudget) {
-    // Was "프레임 수나 길이를 줄여보세요" — but no UI exposes frame count or
-    // duration, so that instructed an impossible action. State the real situation.
+  log(
+    'info',
+    `animation: ${anim.frameCount}/${anim.sourceFrameCount} frames @ ${anim.fps}fps, ${anim.sizeBytes} bytes (quality ${qPct}%)`,
+  )
+  // Thinning is invisible in the result but changes what the badge plays, so it
+  // has to be stated. The encoder now guarantees the budget, so this is the only
+  // remaining thing the user might want to act on (by shortening the source).
+  if (anim.frameCount < anim.sourceFrameCount) {
     notice(
       fileNotice,
       'warn',
-      `권장 용량(${Math.round(anim.maxBytes / 1024)}KB)을 넘었습니다. 권장치는 하드웨어로 확인되지 않은 보수적인 추정값이라 전송은 그대로 시도합니다.`,
+      `배지 용량(${Math.round(anim.maxBytes / 1024)}KB)에 맞추려고 ${anim.sourceFrameCount}프레임 중 ${anim.frameCount}개만 사용했습니다. 더 부드럽게 하려면 더 짧은 원본을 써 보세요.`,
     )
-    log('warn', `over budget: ${anim.sizeBytes}B > ${anim.maxBytes}B (advisory)`)
+    log('warn', `decimated ${anim.sourceFrameCount} -> ${anim.frameCount} frames to fit ${anim.maxBytes}B`)
   }
 }
 
