@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@types/web-bluetooth": "^0.0.21",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
   }
