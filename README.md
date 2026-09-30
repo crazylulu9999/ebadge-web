@@ -75,14 +75,18 @@ subpath without hardcoding the repo name.
 - Image upload is implemented and the auth cipher is verified against the captured
   test vector. **Not yet tested end-to-end against hardware from this port** — test
   on your badge and check the log if anything stalls.
-- GIF / slideshow / video animation is implemented: the same upload path carries an MJPG
-  AVI (built by `src/avi.ts`, a byte-for-byte port of the hardware-verified
-  reference container), and only the completion path extension changes (`.avi`
-  vs `.jpg`). The AVI container structure is unit-tested (`tests/avi.selftest.ts`),
-  but **animation has not been confirmed on hardware yet** — verify on your badge.
-  GIF decoding uses WebCodecs `ImageDecoder`; video sampling uses an
-  `HTMLVideoElement` seek (no extra deps). Both are Chrome / Edge only, and video
-  codec support is whatever the browser provides.
+- GIF / slideshow / video animation is implemented and **confirmed on hardware**
+  (2026-07-30): the same upload path carries an MJPG AVI (built by `src/avi.ts`),
+  and only the completion path extension changes (`.avi` vs `.jpg`). GIF decoding
+  uses WebCodecs `ImageDecoder`; video sampling uses an `HTMLVideoElement` seek
+  (no extra deps). Both are Chrome / Edge only, and video codec support is
+  whatever the browser provides.
+- **Animations have a size ceiling and exceeding it fails silently.** Measured:
+  558 KB plays, 890 KB uploads with a clean protocol trace and then displays
+  nothing. `TARGET_MAX_ANIMATION_BYTES` (550 KB) is therefore enforced, not
+  advisory — the encoder thins GIF/video frames to fit and refuses a slideshow
+  it cannot carry, rather than sending a file the badge will discard. Transfers
+  run at ~6.5 KB/s, so a full-budget animation takes about 85 s.
 - The completion handshake (phase 10) sends a generated UTF-16LE path; the file is
   typically already stored before this. Completion errors are logged, not fatal.
 - Text rendering and danmaku remain out of scope — the reference repos have that
